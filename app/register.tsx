@@ -1,32 +1,36 @@
-import { Link, useRouter } from "expo-router";
-import {
-  ActivityIndicator,
-  Animated,
-  Easing,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-
 import { LinearGradient } from "expo-linear-gradient";
+import { Link, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
+import {
+    ActivityIndicator,
+    Animated,
+    Easing,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-
-export default function LoginScreen() {
+export default function RegisterScreen() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  const [nameFocused, setNameFocused] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const [confirmFocused, setConfirmFocused] = useState(false);
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -43,7 +47,6 @@ export default function LoginScreen() {
   const blob2Y = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Entrance animations
     Animated.stagger(150, [
       Animated.timing(headerAnim, {
         toValue: 1,
@@ -59,7 +62,6 @@ export default function LoginScreen() {
       }),
     ]).start();
 
-    // Blob drift animations
     Animated.loop(
       Animated.sequence([
         Animated.parallel([
@@ -158,9 +160,9 @@ export default function LoginScreen() {
     ]).start();
   };
 
-  const handleLogin = () => {
+  const handleRegister = () => {
     setError("");
-    if (!email || !password) {
+    if (!name || !email || !password || !confirmPassword) {
       setError("Please fill in all fields.");
       triggerShake();
       return;
@@ -170,30 +172,47 @@ export default function LoginScreen() {
       triggerShake();
       return;
     }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      triggerShake();
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      triggerShake();
+      return;
+    }
+
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      if (email === "demo@expo.dev" && password === "password") {
-        setSuccess(true);
-        Animated.parallel([
-          Animated.timing(successAnim, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-          Animated.spring(successScale, {
-            toValue: 1,
-            friction: 6,
-            useNativeDriver: true,
-          }),
-        ]).start();
-        setTimeout(() => router.replace("/(tabs)"), 1500);
-      } else {
-        setError("Invalid credentials. Try demo@expo.dev / password");
-        triggerShake();
-      }
+      setSuccess(true);
+      Animated.parallel([
+        Animated.timing(successAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.spring(successScale, {
+          toValue: 1,
+          friction: 6,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      setTimeout(() => router.replace("/(tabs)"), 1500);
     }, 1800);
   };
+
+  // Password strength indicator
+  const getPasswordStrength = () => {
+    if (password.length === 0) return null;
+    if (password.length < 6)
+      return { label: "Weak", color: "#f87171", width: "30%" };
+    if (password.length < 10)
+      return { label: "Fair", color: "#fb923c", width: "60%" };
+    return { label: "Strong", color: "#4ade80", width: "100%" };
+  };
+  const strength = getPasswordStrength();
 
   return (
     <View style={styles.container}>
@@ -224,8 +243,8 @@ export default function LoginScreen() {
               <Text style={styles.successCheck}>✓</Text>
             </LinearGradient>
           </Animated.View>
-          <Text style={styles.successTitle}>WELCOME BACK</Text>
-          <Text style={styles.successSub}>Redirecting to your dashboard…</Text>
+          <Text style={styles.successTitle}>ACCOUNT CREATED</Text>
+          <Text style={styles.successSub}>Welcome aboard! Redirecting…</Text>
         </Animated.View>
       )}
 
@@ -261,12 +280,12 @@ export default function LoginScreen() {
             >
               <Text style={styles.logoIcon}>⬡</Text>
             </LinearGradient>
-            <Text style={styles.welcomeLabel}>Welcome back</Text>
-            <Text style={styles.titleLine}>SIGN</Text>
-            <Text style={styles.titleLineAccent}>INTO</Text>
-            <Text style={styles.titleLine}>YOUR APP</Text>
+            <Text style={styles.welcomeLabel}>Get started</Text>
+            <Text style={styles.titleLine}>CREATE</Text>
+            <Text style={styles.titleLineAccent}>YOUR</Text>
+            <Text style={styles.titleLine}>ACCOUNT</Text>
             <Text style={styles.subtitle}>
-              Continue where you left off.{"\n"}Your data is waiting.
+              Join thousands of users.{"\n"}It only takes a minute.
             </Text>
           </Animated.View>
 
@@ -297,8 +316,39 @@ export default function LoginScreen() {
               </Animated.View>
             ) : null}
 
-            {/* Email field */}
+            {/* Full Name */}
             <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Full Name</Text>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  nameFocused && styles.inputWrapperFocused,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.inputIcon,
+                    nameFocused && styles.inputIconFocused,
+                  ]}
+                >
+                  👤
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="John Doe"
+                  placeholderTextColor="rgba(255,255,255,0.2)"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  value={name}
+                  onChangeText={setName}
+                  onFocus={() => setNameFocused(true)}
+                  onBlur={() => setNameFocused(false)}
+                />
+              </View>
+            </View>
+
+            {/* Email */}
+            <View style={[styles.fieldGroup, { marginTop: 16 }]}>
               <Text style={styles.fieldLabel}>Email Address</Text>
               <View
                 style={[
@@ -329,7 +379,7 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* Password field */}
+            {/* Password */}
             <View style={[styles.fieldGroup, { marginTop: 16 }]}>
               <Text style={styles.fieldLabel}>Password</Text>
               <View
@@ -348,7 +398,7 @@ export default function LoginScreen() {
                 </Text>
                 <TextInput
                   style={[styles.input, { paddingRight: 48 }]}
-                  placeholder="••••••••"
+                  placeholder="Min. 6 characters"
                   placeholderTextColor="rgba(255,255,255,0.2)"
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
@@ -366,16 +416,78 @@ export default function LoginScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+              {/* Password strength bar */}
+              {strength && (
+                <View style={styles.strengthContainer}>
+                  <View style={styles.strengthTrack}>
+                    <View
+                      style={[
+                        styles.strengthFill,
+                        {
+                          width: strength.width as any,
+                          backgroundColor: strength.color,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text
+                    style={[styles.strengthLabel, { color: strength.color }]}
+                  >
+                    {strength.label}
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {/* Forgot password */}
-            <TouchableOpacity style={styles.forgotRow}>
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </TouchableOpacity>
+            {/* Confirm Password */}
+            <View style={[styles.fieldGroup, { marginTop: 16 }]}>
+              <Text style={styles.fieldLabel}>Confirm Password</Text>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  confirmFocused && styles.inputWrapperFocused,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.inputIcon,
+                    confirmFocused && styles.inputIconFocused,
+                  ]}
+                >
+                  🔒
+                </Text>
+                <TextInput
+                  style={[styles.input, { paddingRight: 48 }]}
+                  placeholder="Re-enter password"
+                  placeholderTextColor="rgba(255,255,255,0.2)"
+                  secureTextEntry={!showConfirm}
+                  autoCapitalize="none"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  onFocus={() => setConfirmFocused(true)}
+                  onBlur={() => setConfirmFocused(false)}
+                />
+                <TouchableOpacity
+                  style={styles.eyeBtn}
+                  onPress={() => setShowConfirm(!showConfirm)}
+                >
+                  <Text style={styles.eyeIcon}>
+                    {showConfirm ? "🙈" : "👁️"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-            {/* Sign in button */}
+            {/* Terms note */}
+            <Text style={styles.termsText}>
+              By creating an account you agree to our{" "}
+              <Text style={styles.termsLink}>Terms of Service</Text> and{" "}
+              <Text style={styles.termsLink}>Privacy Policy</Text>.
+            </Text>
+
+            {/* Register button */}
             <TouchableOpacity
-              onPress={handleLogin}
+              onPress={handleRegister}
               disabled={loading}
               activeOpacity={0.85}
               style={{ marginTop: 8 }}
@@ -389,7 +501,7 @@ export default function LoginScreen() {
                 {loading ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
-                  <Text style={styles.btnText}>Sign In</Text>
+                  <Text style={styles.btnText}>Create Account</Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
@@ -411,12 +523,12 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Sign up */}
+            {/* Login link */}
             <View style={styles.footer}>
-              <Text style={styles.footerText}>Don't have an account? </Text>
-              <Link href="/register" asChild>
+              <Text style={styles.footerText}>Already have an account? </Text>
+              <Link href="/login" asChild>
                 <TouchableOpacity>
-                  <Text style={styles.footerLink}>Create one here</Text>
+                  <Text style={styles.footerLink}>Sign in</Text>
                 </TouchableOpacity>
               </Link>
             </View>
@@ -563,14 +675,39 @@ const styles = StyleSheet.create({
   eyeIcon: {
     fontSize: 16,
   },
-  forgotRow: {
-    alignItems: "flex-end",
-    marginTop: 10,
+  strengthContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+  },
+  strengthTrack: {
+    flex: 1,
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  strengthFill: {
+    height: "100%",
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    minWidth: 40,
+    textAlign: "right",
+  },
+  termsText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.3)",
+    lineHeight: 18,
+    marginTop: 16,
     marginBottom: 4,
   },
-  forgotText: {
+  termsLink: {
     color: "#6366f1",
-    fontSize: 13,
     fontWeight: "500",
   },
   btnPrimary: {
