@@ -22,9 +22,9 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [success] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
 
@@ -170,30 +170,6 @@ export default function LoginScreen() {
       triggerShake();
       return;
     }
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      if (email === "demo@expo.dev" && password === "password") {
-        setSuccess(true);
-        Animated.parallel([
-          Animated.timing(successAnim, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-          Animated.spring(successScale, {
-            toValue: 1,
-            friction: 6,
-            useNativeDriver: true,
-          }),
-        ]).start();
-        setTimeout(() => router.replace("/(tabs)"), 1500);
-      } else {
-        setError("Invalid credentials. Try demo@expo.dev / password");
-        triggerShake();
-      }
-    }, 1800);
-  };
 
   return (
     <View style={styles.container}>
@@ -682,4 +658,5 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.4)",
     fontSize: 14,
   },
-});
+})
+};
