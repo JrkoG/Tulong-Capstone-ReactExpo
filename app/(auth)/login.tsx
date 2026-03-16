@@ -1,6 +1,4 @@
-import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -14,26 +12,28 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-export default function RegisterScreen() {
-  const [name, setName] = useState("");
+import { LinearGradient } from "expo-linear-gradient";
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useEffect, useRef, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { auth } from '../../config/firebase';
+import { useAuth } from '../../context/authContext';
+
+
+export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [loading] = useState(false);
   const [error, setError] = useState("");
   const [success] = useState(false);
-
-  const [nameFocused, setNameFocused] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
-  const [confirmFocused, setConfirmFocused] = useState(false);
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { login } = useAuth();
 
   // Animations
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -47,6 +47,7 @@ export default function RegisterScreen() {
   const blob2Y = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Entrance animations
     Animated.stagger(150, [
       Animated.timing(headerAnim, {
         toValue: 1,
@@ -62,6 +63,7 @@ export default function RegisterScreen() {
       }),
     ]).start();
 
+    // Blob drift animations
     Animated.loop(
       Animated.sequence([
         Animated.parallel([
@@ -160,9 +162,9 @@ export default function RegisterScreen() {
     ]).start();
   };
 
-  const handleRegister = () => {
+  const handleLogin = async () => {
     setError("");
-    if (!name || !email || !password || !confirmPassword) {
+    if (!email || !password) {
       setError("Please fill in all fields.");
       triggerShake();
       return;
@@ -172,27 +174,9 @@ export default function RegisterScreen() {
       triggerShake();
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      triggerShake();
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      triggerShake();
-      return;
-    }
-
-  // Password strength indicator
-  const getPasswordStrength = () => {
-    if (password.length === 0) return null;
-    if (password.length < 6)
-      return { label: "Weak", color: "#f87171", width: "30%" };
-    if (password.length < 10)
-      return { label: "Fair", color: "#fb923c", width: "60%" };
-    return { label: "Strong", color: "#4ade80", width: "100%" };
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    await login({ id: userCredential.user.uid, email });
   };
-  const strength = getPasswordStrength();
 
   return (
     <View style={styles.container}>
@@ -223,8 +207,8 @@ export default function RegisterScreen() {
               <Text style={styles.successCheck}>✓</Text>
             </LinearGradient>
           </Animated.View>
-          <Text style={styles.successTitle}>ACCOUNT CREATED</Text>
-          <Text style={styles.successSub}>Welcome aboard! Redirecting…</Text>
+          <Text style={styles.successTitle}>WELCOME BACK</Text>
+          <Text style={styles.successSub}>Redirecting to your dashboard…</Text>
         </Animated.View>
       )}
 
@@ -260,12 +244,12 @@ export default function RegisterScreen() {
             >
               <Text style={styles.logoIcon}>⬡</Text>
             </LinearGradient>
-            <Text style={styles.welcomeLabel}>Get started</Text>
-            <Text style={styles.titleLine}>CREATE</Text>
-            <Text style={styles.titleLineAccent}>YOUR</Text>
-            <Text style={styles.titleLine}>ACCOUNT</Text>
+            <Text style={styles.welcomeLabel}>Welcome back</Text>
+            <Text style={styles.titleLine}>SIGN</Text>
+            <Text style={styles.titleLineAccent}>INTO</Text>
+            <Text style={styles.titleLine}>YOUR APP</Text>
             <Text style={styles.subtitle}>
-              Join thousands of users.{"\n"}It only takes a minute.
+              Continue where you left off.{"\n"}Your data is waiting.
             </Text>
           </Animated.View>
 
@@ -296,39 +280,8 @@ export default function RegisterScreen() {
               </Animated.View>
             ) : null}
 
-            {/* Full Name */}
+            {/* Email field */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Full Name</Text>
-              <View
-                style={[
-                  styles.inputWrapper,
-                  nameFocused && styles.inputWrapperFocused,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.inputIcon,
-                    nameFocused && styles.inputIconFocused,
-                  ]}
-                >
-                  👤
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="John Doe"
-                  placeholderTextColor="rgba(255,255,255,0.2)"
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  value={name}
-                  onChangeText={setName}
-                  onFocus={() => setNameFocused(true)}
-                  onBlur={() => setNameFocused(false)}
-                />
-              </View>
-            </View>
-
-            {/* Email */}
-            <View style={[styles.fieldGroup, { marginTop: 16 }]}>
               <Text style={styles.fieldLabel}>Email Address</Text>
               <View
                 style={[
@@ -359,7 +312,7 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            {/* Password */}
+            {/* Password field */}
             <View style={[styles.fieldGroup, { marginTop: 16 }]}>
               <Text style={styles.fieldLabel}>Password</Text>
               <View
@@ -378,7 +331,7 @@ export default function RegisterScreen() {
                 </Text>
                 <TextInput
                   style={[styles.input, { paddingRight: 48 }]}
-                  placeholder="Min. 6 characters"
+                  placeholder="••••••••"
                   placeholderTextColor="rgba(255,255,255,0.2)"
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
@@ -396,78 +349,16 @@ export default function RegisterScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-              {/* Password strength bar */}
-              {strength && (
-                <View style={styles.strengthContainer}>
-                  <View style={styles.strengthTrack}>
-                    <View
-                      style={[
-                        styles.strengthFill,
-                        {
-                          width: strength.width as any,
-                          backgroundColor: strength.color,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.strengthLabel, { color: strength.color }]}
-                  >
-                    {strength.label}
-                  </Text>
-                </View>
-              )}
             </View>
 
-            {/* Confirm Password */}
-            <View style={[styles.fieldGroup, { marginTop: 16 }]}>
-              <Text style={styles.fieldLabel}>Confirm Password</Text>
-              <View
-                style={[
-                  styles.inputWrapper,
-                  confirmFocused && styles.inputWrapperFocused,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.inputIcon,
-                    confirmFocused && styles.inputIconFocused,
-                  ]}
-                >
-                  🔒
-                </Text>
-                <TextInput
-                  style={[styles.input, { paddingRight: 48 }]}
-                  placeholder="Re-enter password"
-                  placeholderTextColor="rgba(255,255,255,0.2)"
-                  secureTextEntry={!showConfirm}
-                  autoCapitalize="none"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  onFocus={() => setConfirmFocused(true)}
-                  onBlur={() => setConfirmFocused(false)}
-                />
-                <TouchableOpacity
-                  style={styles.eyeBtn}
-                  onPress={() => setShowConfirm(!showConfirm)}
-                >
-                  <Text style={styles.eyeIcon}>
-                    {showConfirm ? "🙈" : "👁️"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            {/* Forgot password */}
+            <TouchableOpacity style={styles.forgotRow}>
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
 
-            {/* Terms note */}
-            <Text style={styles.termsText}>
-              By creating an account you agree to our{" "}
-              <Text style={styles.termsLink}>Terms of Service</Text> and{" "}
-              <Text style={styles.termsLink}>Privacy Policy</Text>.
-            </Text>
-
-            {/* Register button */}
+            {/* Sign in button */}
             <TouchableOpacity
-              onPress={handleRegister}
+              onPress={handleLogin}
               disabled={loading}
               activeOpacity={0.85}
               style={{ marginTop: 8 }}
@@ -481,7 +372,7 @@ export default function RegisterScreen() {
                 {loading ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
-                  <Text style={styles.btnText}>Create Account</Text>
+                  <Text style={styles.btnText}>Sign In</Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
@@ -503,12 +394,12 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Login link */}
+            {/* Sign up */}
             <View style={styles.footer}>
-              <Text style={styles.footerText}>Already have an account? </Text>
-              <Link href="/login" asChild>
+              <Text style={styles.footerText}>Don't have an account? </Text>
+              <Link href="/register" asChild>
                 <TouchableOpacity>
-                  <Text style={styles.footerLink}>Sign in</Text>
+                  <Text style={styles.footerLink}>Create one here</Text>
                 </TouchableOpacity>
               </Link>
             </View>
@@ -655,39 +546,14 @@ const styles = StyleSheet.create({
   eyeIcon: {
     fontSize: 16,
   },
-  strengthContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 8,
-  },
-  strengthTrack: {
-    flex: 1,
-    height: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  strengthFill: {
-    height: "100%",
-    borderRadius: 2,
-  },
-  strengthLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    minWidth: 40,
-    textAlign: "right",
-  },
-  termsText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.3)",
-    lineHeight: 18,
-    marginTop: 16,
+  forgotRow: {
+    alignItems: "flex-end",
+    marginTop: 10,
     marginBottom: 4,
   },
-  termsLink: {
+  forgotText: {
     color: "#6366f1",
+    fontSize: 13,
     fontWeight: "500",
   },
   btnPrimary: {
@@ -799,5 +665,4 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.4)",
     fontSize: 14,
   },
-})
-};
+});
