@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — change as needed
+const SESSION_TIMEOUT_MS = 3 * 60 * 1000; // change the first number to adjust minutes (e.g. 30 for 30 mins)
 const KEYS = {
   HAS_LAUNCHED: 'app:hasLaunched',
   USER:         'app:user',

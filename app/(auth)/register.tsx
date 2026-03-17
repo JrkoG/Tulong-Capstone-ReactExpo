@@ -1,6 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,7 +17,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { auth } from '../../config/firebase';
+import { auth, db } from '../../config/firebase';
 import { useAuth } from '../../context/authContext';
 
 
@@ -27,9 +28,9 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [loading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success] = useState(false);
+  const [success, setSuccess] = useState(false);
 
   const [nameFocused, setNameFocused] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
@@ -187,8 +188,35 @@ export default function RegisterScreen() {
       triggerShake();
       return;
     }
-     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await login({ id: userCredential.user.uid, email });
+     try {
+      setLoading(true);
+
+    // Step 1: Create the Auth account
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = userCredential.user.uid;
+
+    // Step 2: Save user data to Firestore
+    await setDoc(doc(db, "users", uid), {
+      uid,
+      name,
+      email,
+      createdAt: serverTimestamp(),
+      role: "user",
+    });
+
+    // Step 3: Log them in
+    await login({ id: uid, email });
+
+  } catch (err: any) {
+    triggerShake();
+    if (err.code === "auth/email-already-in-use") {
+      setError("This email is already registered.");
+    } else {
+      setError(err.message || "Something went wrong. Try again.");
+    }
+  } finally {
+    setLoading(false);
+  }
   };
 
   // Password strength indicator
