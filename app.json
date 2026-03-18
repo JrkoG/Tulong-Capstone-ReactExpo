@@ -9,7 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["location", "fetch", "remote-notification"],
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Tulong needs your location to alert your contacts when you press the SOS button.",
+        "NSLocationAlwaysUsageDescription": "Tulong needs background location to track your position during emergencies.",
+        "NSLocationWhenInUseUsageDescription": "Tulong needs your location to send it to your emergency contacts."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,7 +26,15 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.tulongapp"
+      "package": "com.anonymous.tulongapp",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "output": "static",
@@ -39,8 +53,23 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#6366f1"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Tulong needs your location to alert your contacts when you press the SOS button.",
+          "locationAlwaysPermission": "Tulong needs background location to track your position during emergencies.",
+          "locationWhenInUsePermission": "Tulong needs your location to send it to your emergency contacts."
+        }
       ]
     ],
+
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
