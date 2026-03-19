@@ -7,10 +7,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="home-outline" size={24} color={color} />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -20,6 +17,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }) => (
             <Ionicons name="grid-outline" size={24} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="add-contact"
+        options={{
+          href: null,  // ← hides it from the tab bar
+          tabBarStyle: { display: 'none' },  // ← hides the tab bar when on this screen
         }}
       />
     </Tabs>

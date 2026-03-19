@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, deleteDoc, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -144,6 +144,27 @@ export default function DashboardScreen() {
     Linking.openURL(`tel:${phone}`);
   };
 
+  const handleDeleteContact = (contactId: string, contactName: string) => {
+  Alert.alert(
+    'Remove Contact',
+    `Are you sure you want to remove ${contactName} from your emergency contacts?`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, 'users', user!.id, 'contacts', contactId));
+          } catch (e) {
+            Alert.alert('Error', 'Failed to remove contact. Please try again.');
+          }
+        },
+      },
+    ]
+  );
+};
+
   const centerMap = () => {
     if (mapRef.current && userLocation) {
       mapRef.current.animateToRegion({
@@ -251,7 +272,7 @@ export default function DashboardScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Emergency Contacts</Text>
             {contacts.length < 3 && (
-              <TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/add-contact' as any)}>
                 <Text style={styles.addBtn}>+ Add</Text>
               </TouchableOpacity>
             )}
@@ -277,6 +298,12 @@ export default function DashboardScreen() {
                 >
                   <Text style={styles.callBtnText}>Call</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={() => handleDeleteContact(contact.id, contact.name)}
+                >
+                  <Text style={styles.deleteBtnText}>✕</Text>
+                  </TouchableOpacity>
               </View>
             ))
           )}
@@ -518,5 +545,21 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.35)',
     fontSize: 11,
     marginTop: 2,
+  },
+  deleteBtn: {
+  width: 30,
+  height: 30,
+  borderRadius: 8,
+  backgroundColor: 'rgba(248,113,113,0.1)',
+  borderWidth: 1,
+  borderColor: 'rgba(248,113,113,0.25)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginLeft: 6,
+  },
+  deleteBtnText: {
+  color: '#f87171',
+  fontSize: 12,
+  fontWeight: '700',
   },
 });
