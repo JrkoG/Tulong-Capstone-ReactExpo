@@ -13,8 +13,10 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import SOSModal from '../../components/SOSModal';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/authContext';
+import { useAlertListener } from '../../hooks/useAlertListener';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Contact = {
@@ -36,6 +38,7 @@ type DeviceLocation = {
 
 export default function DashboardScreen() {
   const { logout, user } = useAuth();
+  const { activeAlert, dismissAlert } = useAlertListener(user?.id);
   const router = useRouter();
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -329,9 +332,15 @@ export default function DashboardScreen() {
             ))
           )}
         </View>
-
         <View style={{ height: 32 }} />
       </ScrollView>
+      <SOSModal
+        visible={!!activeAlert}
+        message={activeAlert?.message ?? ''}
+        location={activeAlert?.location}
+       timestamp={activeAlert?.timestamp}
+        onDismiss={dismissAlert}
+      />
     </View>
   );
 }
