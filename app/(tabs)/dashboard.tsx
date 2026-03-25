@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { collection, deleteDoc, doc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import PrivacyConsentModal from '../../components/PrivacyConsentModal';
 import SOSModal from '../../components/SOSModal';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/authContext';
@@ -49,32 +50,50 @@ export default function DashboardScreen() {
   const [alerts, setAlerts]                 = useState<AlertLog[]>([]);
   const [locationReady, setLocationReady]   = useState(false);
   const mapRef = useRef<MapView>(null);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [consentGiven, setConsentGiven] = useState(false);
 
   // ── Get phone user's location ──────────────────────────────────────────────
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
+  if (!user) return;
 
-      const loc = await Location.getCurrentPositionAsync({});
-      setUserLocation({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      });
-      setLocationReady(true);
+  (async () => {
+    // Check if user already gave consent
+    const consentDoc = await getDoc(doc(db, 'users', user.id, 'consent', 'privacy'));
+    
+    if (consentDoc.exists() && consentDoc.data().consentGiven) {
+      // Already consented — go straight to location
+      setConsentGiven(true);
+      requestLocation();
+    } else {
+      // Show privacy modal first
+      setShowPrivacy(true);
+    }
+  })();
+  }, [user]);
 
       // Watch location for updates
-      await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 5 },
-        (newLoc) => {
-          setUserLocation({
-            latitude: newLoc.coords.latitude,
-            longitude: newLoc.coords.longitude,
-          });
-        }
-      );
-    })();
-  }, []);
+      const requestLocation = async () => {
+  const { status } = await Location.requestForegroundPermissionsAsync();
+  if (status !== 'granted') return;
+
+  const loc = await Location.getCurrentPositionAsync({});
+  setUserLocation({
+    latitude: loc.coords.latitude,
+    longitude: loc.coords.longitude,
+  });
+  setLocationReady(true);
+
+  await Location.watchPositionAsync(
+    { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 5 },
+    (newLoc) => {
+      setUserLocation({
+        latitude: newLoc.coords.latitude,
+        longitude: newLoc.coords.longitude,
+      });
+    }
+  );
+};
 
   // ── Listen to wearer's location from Firestore ─────────────────────────────
   useEffect(() => {
@@ -334,6 +353,17 @@ export default function DashboardScreen() {
         </View>
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      <PrivacyConsentModal
+      visible={showPrivacy}
+      userId={user?.id ?? ''}
+      onConsent={() => {
+        setShowPrivacy(false);
+        setConsentGiven(true);
+        requestLocation();
+      }}
+      />
+      
       <SOSModal
         visible={!!activeAlert}
         message={activeAlert?.message ?? ''}

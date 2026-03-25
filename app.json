@@ -11,7 +11,11 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["location", "fetch", "remote-notification"],
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ],
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Tulong needs your location to alert your contacts when you press the SOS button.",
         "NSLocationAlwaysUsageDescription": "Tulong needs background location to track your position during emergencies.",
         "NSLocationWhenInUseUsageDescription": "Tulong needs your location to send it to your emergency contacts."
@@ -33,7 +37,9 @@
         "ACCESS_BACKGROUND_LOCATION",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -69,10 +75,15 @@
         }
       ]
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "79f6cd16-2c30-4c35-84c2-41cc7004e3b2"
+      }
     }
   }
 }
