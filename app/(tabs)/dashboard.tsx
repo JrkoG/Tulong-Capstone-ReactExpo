@@ -12,8 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView from 'react-native-maps';
-import { WebView } from 'react-native-webview';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import PrivacyConsentModal from '../../components/PrivacyConsentModal';
 import SOSModal from '../../components/SOSModal';
 import { db } from '../../config/firebase';
@@ -239,73 +238,43 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {locationReady && userLocation ? (
-          <WebView
-            style={styles.map}
-            source={{
-              html: `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-                  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-                  <style>
-                    body { margin: 0; padding: 0; }
-                    #map { width: 100%; height: 100vh; }
-                  </style>
-                </head>
-                <body>
-                  <div id="map"></div>
-                  <script>
-                    var map = L.map('map').setView(
-                      [${userLocation.latitude}, ${userLocation.longitude}], 
-                      15
-                    );
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                      attribution: '© OpenStreetMap contributors'
-                    }).addTo(map);
-
-                    // You marker (blue)
-                    var youIcon = L.divIcon({
-                      className: '',
-                      html: '<div style="width:16px;height:16px;background:#6366f1;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>',
-                      iconSize: [16, 16],
-                      iconAnchor: [8, 8],
-                    });
-                    L.marker(
-                      [${userLocation.latitude}, ${userLocation.longitude}], 
-                      { icon: youIcon }
-                    ).addTo(map).bindPopup('You').openPopup();
-
-                    ${wearerLocation ? `
-                    // Wearer marker (red)
-                    var wearerIcon = L.divIcon({
-                      className: '',
-                      html: '<div style="width:16px;height:16px;background:#f87171;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>',
-                      iconSize: [16, 16],
-                      iconAnchor: [8, 8],
-                    });
-                    L.marker(
-                      [${wearerLocation.latitude}, ${wearerLocation.longitude}],
-                      { icon: wearerIcon }
-                    ).addTo(map).bindPopup('Wearer');
-                    ` : ''}
-                  </script>
-                </body>
-                </html>
-              `
-            }}
-            scrollEnabled={false}
-            javaScriptEnabled={true}
+                {locationReady && userLocation ? (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+          initialRegion={{
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }}
+          showsUserLocation={false}
+          showsMyLocationButton={false}
+        >
+          {/* Phone user marker */}
+          <Marker
+            coordinate={userLocation}
+            title="You"
+            description="Your current location"
+            pinColor="#6366f1"
           />
-        ) : (
-          <View style={styles.mapPlaceholder}>
-            <Text style={styles.mapPlaceholderText}>Getting location…</Text>
-          </View>
-        )}
+          {/* Wearer marker */}
+          {wearerLocation && (
+            <Marker
+              coordinate={wearerLocation}
+              title="Wearer"
+              description="Device location"
+              pinColor="#f87171"
+            />
+          )}
+        </MapView>
+      ) : (
+        <View style={styles.mapPlaceholder}>
+          <Text style={styles.mapPlaceholderText}>Getting location…</Text>
         </View>
-
+      )}
+      </View>
         {/* Emergency Contacts */}
         <View style={styles.card}>
           <View style={styles.sectionHeader}>

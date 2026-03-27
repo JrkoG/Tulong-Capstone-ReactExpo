@@ -10,12 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "config": {
+        "googleMapsApiKey": "AIzaSyAHjrWuK1uyXEJ40drMPzqiwItVtCYaKzw"
+      },
       "infoPlist": {
-        "UIBackgroundModes": [
-          "location",
-          "fetch",
-          "remote-notification"
-        ],
+        "UIBackgroundModes": ["location", "fetch", "remote-notification"],
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Tulong needs your location to alert your contacts when you press the SOS button.",
         "NSLocationAlwaysUsageDescription": "Tulong needs background location to track your position during emergencies.",
         "NSLocationWhenInUseUsageDescription": "Tulong needs your location to send it to your emergency contacts."
@@ -28,6 +27,11 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAHjrWuK1uyXEJ40drMPzqiwItVtCYaKzw"
+        }
+      },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.tulongapp",
@@ -37,9 +41,7 @@
         "ACCESS_BACKGROUND_LOCATION",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
-        "POST_NOTIFICATIONS",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
