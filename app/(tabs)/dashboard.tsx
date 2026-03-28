@@ -238,57 +238,43 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {locationReady && userLocation ? (
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-              initialRegion={{
-                latitude: userLocation.latitude,
-                longitude: userLocation.longitude,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
-              showsUserLocation={false}
-              showsMyLocationButton={false}
-            >
-              {/* Phone user marker */}
-              <Marker
-                coordinate={userLocation}
-                title="You"
-                description="Your current location"
-                pinColor="#6366f1"
-              />
-
-              {/* Wearer marker */}
-              {wearerLocation && (
-                <Marker
-                  coordinate={wearerLocation}
-                  title="Wearer"
-                  description="Device location"
-                  pinColor="#f87171"
-                />
-              )}
-            </MapView>
-          ) : (
-            <View style={styles.mapPlaceholder}>
-              <Text style={styles.mapPlaceholderText}>Getting location…</Text>
-            </View>
+                {locationReady && userLocation ? (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+          initialRegion={{
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }}
+          showsUserLocation={false}
+          showsMyLocationButton={false}
+        >
+          {/* Phone user marker */}
+          <Marker
+            coordinate={userLocation}
+            title="You"
+            description="Your current location"
+            pinColor="#6366f1"
+          />
+          {/* Wearer marker */}
+          {wearerLocation && (
+            <Marker
+              coordinate={wearerLocation}
+              title="Wearer"
+              description="Device location"
+              pinColor="#f87171"
+            />
           )}
-
-          {/* Map legend */}
-          <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#6366f1' }]} />
-              <Text style={styles.legendText}>You</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#f87171' }]} />
-              <Text style={styles.legendText}>Wearer</Text>
-            </View>
-          </View>
+        </MapView>
+      ) : (
+        <View style={styles.mapPlaceholder}>
+          <Text style={styles.mapPlaceholderText}>Getting location…</Text>
         </View>
-
+      )}
+      </View>
         {/* Emergency Contacts */}
         <View style={styles.card}>
           <View style={styles.sectionHeader}>
