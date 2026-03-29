@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react';
 import {
-    Animated,
-    Easing,
-    Modal,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    Vibration,
-    View,
+  Animated,
+  Easing,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from 'react-native';
 
 type Props = {
@@ -67,7 +67,7 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
       pulseAnim.setValue(1);
       Vibration.cancel();
     }
-  }, [visible]);
+  }, [visible, fadeAnim, slideAnim, pulseAnim]);
 
   const formatTime = (ts: any) => {
     if (!ts) return '';

@@ -39,7 +39,7 @@ export function useAlertListener(userId: string | undefined) {
 
     return () => {
       if (listenerRef.current) {
-        (listenerRef.current.remove);
+        listenerRef.current?.remove();
       }
     };
   }, []);
