@@ -93,7 +93,6 @@ export default function LoginScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
-      {/* FIXED BACKGROUND */}
       <View style={styles.backgroundWrapper} pointerEvents="none">
         <View style={[styles.topRect, { backgroundColor: theme.topAccent }]} />
         <View style={[styles.triangleDown, { borderBottomColor: theme.topAccent }]} />
@@ -114,7 +113,6 @@ export default function LoginScreen() {
         >
           <Animated.View style={{ opacity: contentAnim }}>
             
-            {/* TULONG BRANDING */}
             <View style={styles.logoRow}>
               <View style={[styles.logoBox, { borderColor: theme.brandGold }]}>
                 <Ionicons name="location-sharp" size={24} color={theme.brandGold} />
@@ -125,12 +123,9 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* LOGIN TITLE: Now using absolute top positioning to stay in the circle */}
-            <View style={styles.titleWrapper}>
-              <Text style={[styles.mainTitle, { color: theme.text }]}>Login</Text>
-            </View>
+            {/* LOGIN TITLE: Pushed lower into the gray area circle */}
+            <Text style={[styles.mainTitle, { color: theme.text }]}>Login</Text>
 
-            {/* FORM: Starts below the triangle point */}
             <Animated.View style={[styles.form, { transform: [{ translateX: shakeAnim }] }]}>
               {error ? (
                 <View style={styles.errorBox}>
@@ -144,6 +139,7 @@ export default function LoginScreen() {
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
+                // REMOVED example suggestion placeholder
               />
 
               <View style={[styles.labelRow, { marginTop: 24 }]}>
@@ -240,26 +236,21 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center',
     gap: 14, 
-    marginBottom: 0 // Logo stays at top
+    marginBottom: 50 
   },
   logoBox: { width: 44, height: 44, borderWidth: 2, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   brandName: { fontSize: 22, fontWeight: '900' },
   brandSub: { fontSize: 12, fontWeight: '500' },
-  titleWrapper: {
-    height: 180, // Creating space for the title to float in
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   mainTitle: { 
     fontSize: 32, 
     fontWeight: '800', 
-    textAlign: 'center',
-    top: 40, // Specifically pushing "Login" down into the circled gray area
+    textAlign: 'center', 
+    marginBottom: 105 // Lowered from 90 to place it deeper in the gray circle area
   },
   form: { 
     width: '100%', 
     zIndex: 10,
-    marginTop: 40 // Keeping form below the triangle
+    marginTop: 40 
   },
   label: { fontSize: 12, fontWeight: '600' },
   labelRow: { flexDirection: 'row', justifyContent: 'space-between' },
