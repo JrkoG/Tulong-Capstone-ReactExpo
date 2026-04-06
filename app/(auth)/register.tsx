@@ -251,7 +251,6 @@ const styles = StyleSheet.create({
   form: { width: '100%' },
   label: { fontSize: 12, fontWeight: '700' },
   
-  // UPDATED TYPING FONT TO MATCH LOGIN SCREEN
   typingInput: { 
     borderBottomWidth: 1, 
     height: 50, 

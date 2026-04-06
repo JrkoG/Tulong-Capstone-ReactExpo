@@ -30,15 +30,15 @@ export default function AddContactScreen() {
 
   const relationships = ['Mother', 'Father', 'Sibling', 'Friend', 'Partner'];
 
-  // Smart Theme Configuration - Synchronized with Register/Login logic
+  // Smart Theme Configuration 
   const theme = {
     background: isDark ? '#000000' : '#FFFFFF', 
     text: isDark ? '#FFFFFF' : '#1C1C1E',
     inputBg: isDark ? '#16161e' : '#F9F9F9',
     border: isDark ? '#333333' : 'rgba(0,0,0,0.1)',
     placeholder: isDark ? '#666666' : '#A0A0A5',
-    buttonBg: isDark ? '#FFFFFF' : '#000000', // Matches Register
-    buttonText: isDark ? '#000000' : '#FFFFFF', // Matches Register
+    buttonBg: isDark ? '#FFFFFF' : '#000000', 
+    buttonText: isDark ? '#000000' : '#FFFFFF', 
     brandGold: '#D0A97E',
   };
 
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: '600' },
   saveButton: {
     height: 56,
-    borderRadius: 12, // Matches the input box corner style
+    borderRadius: 12, 
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10,

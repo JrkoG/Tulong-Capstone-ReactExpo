@@ -31,7 +31,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
 
-  // --- Synchronized Theme Palette ---
+  //  Synchronized Theme Palette 
   const theme = {
     background: isDark ? '#000000' : '#FFFFFF', 
     card: isDark ? '#111111' : '#F9F9F9',

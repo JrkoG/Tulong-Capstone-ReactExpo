@@ -122,8 +122,6 @@ export default function LoginScreen() {
                 <Text style={[styles.brandSub, { color: theme.placeholder }]}>Community Safety</Text>
               </View>
             </View>
-
-            {/* LOGIN TITLE: Pushed lower into the gray area circle */}
             <Text style={[styles.mainTitle, { color: theme.text }]}>Login</Text>
 
             <Animated.View style={[styles.form, { transform: [{ translateX: shakeAnim }] }]}>
@@ -139,7 +137,6 @@ export default function LoginScreen() {
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
-                // REMOVED example suggestion placeholder
               />
 
               <View style={[styles.labelRow, { marginTop: 24 }]}>
@@ -245,7 +242,7 @@ const styles = StyleSheet.create({
     fontSize: 32, 
     fontWeight: '800', 
     textAlign: 'center', 
-    marginBottom: 105 // Lowered from 90 to place it deeper in the gray circle area
+    marginBottom: 105 
   },
   form: { 
     width: '100%', 
