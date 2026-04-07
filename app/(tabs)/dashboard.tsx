@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { collection, deleteDoc, doc, getDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -144,6 +144,19 @@ export default function DashboardScreen() {
     return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
+  const handleTestSOS = async () => {
+  if (!user) return;
+  await addDoc(collection(db, 'users', user.id, 'alerts'), {
+    message: 'SOS! The wearer needs immediate help!',
+    timestamp: serverTimestamp(),
+    seen: false,
+    location: {
+      latitude: userLocation?.latitude ?? 14.5995,
+      longitude: userLocation?.longitude ?? 120.9842,
+      },
+    });
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
@@ -165,7 +178,17 @@ export default function DashboardScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
+
+        {/* Test SOS Button — remove when IoT is connected */}
+        <TouchableOpacity
+          style={[styles.testBtn, { borderColor: theme.danger }]}
+          onPress={handleTestSOS}
+        >
+          <Text style={[styles.testBtnText, { color: theme.danger }]}>
+            🚨 Simulate SOS (Test)
+          </Text>
+        </TouchableOpacity>
+
         {/* Map Card */}
         <View style={[styles.mapCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.sectionHeader}>
@@ -302,4 +325,6 @@ const styles = StyleSheet.create({
   alertInfo: { flex: 1 },
   alertMessage: { fontSize: 13, fontWeight: '600' },
   alertTime: { fontSize: 11, marginTop: 2 },
+  testBtn: { borderWidth: 1, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, alignSelf: 'center' },
+  testBtnText: { fontSize: 14, fontWeight: '700' },
 });
