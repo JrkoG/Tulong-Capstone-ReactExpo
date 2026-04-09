@@ -60,6 +60,15 @@ export default function TabsLayout() {
           tabBarStyle: { display: 'none' }, 
         }}
       />
+      <Tabs.Screen
+        name="group"
+        options={{
+          title: 'Group',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="people-outline" size={24} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
