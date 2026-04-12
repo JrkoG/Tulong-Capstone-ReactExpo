@@ -24,12 +24,37 @@ import { useAlertListener } from '../../hooks/useAlertListener';
 type Contact = { id: string; name: string; phone: string; };
 type AlertLog = { id: string; message: string; timestamp: any; };
 type DeviceLocation = { latitude: number; longitude: number; } | null;
+type GroupMember = {
+  id: string;
+  name: string;
+  email: string;
+  status: 'Available' | 'Not Available';
+  location: { latitude: number; longitude: number } | null;
+};
+
+function getDistanceKm(
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): string {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const km = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  if (km < 1) return `${Math.round(km * 1000)}m`;
+  return `${km.toFixed(1)}km`;
+}
 
 export default function DashboardScreen() {
   const { logout, user } = useAuth();
   const { activeAlert, dismissAlert } = useAlertListener(user?.id);
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
+  const [members, setMembers] = useState<GroupMember[]>([]);
 
   //  Synchronized Theme Palette 
   const theme = {
@@ -66,6 +91,23 @@ export default function DashboardScreen() {
       }
     })();
   }, [user]);
+
+  useEffect(() => {
+  if (!user) return;
+  (async () => {
+    const userDoc = await getDoc(doc(db, 'users', user.id));
+    if (userDoc.exists() && userDoc.data().groupId) {
+      const groupId = userDoc.data().groupId;
+      onSnapshot(collection(db, 'groups', groupId, 'members'), (snap) => {
+        const list = snap.docs.map(d => ({
+          id: d.id,
+          ...d.data(),
+        })) as GroupMember[];
+        setMembers(list);
+      });
+    }
+  })();
+}, [user]);
 
   const requestLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -216,6 +258,79 @@ export default function DashboardScreen() {
           )}
         </View>
 
+        {/* Guardian Group */}
+        {members.length > 0 && (
+          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Guardian Group</Text>
+              <Text style={[styles.memberCount, { color: theme.subText }]}>
+                {members.filter(m => m.status === 'Available').length}/{members.length} available
+              </Text>
+            </View>
+            {members.map((member) => (
+              <View
+                key={member.id}
+                style={[styles.contactRow, { borderBottomColor: theme.border }]}
+              >
+                {/* Avatar */}
+                <View style={[styles.contactAvatar, {
+                  backgroundColor: member.status === 'Available'
+                    ? 'rgba(74,222,128,0.1)'
+                    : 'rgba(248,113,113,0.1)',
+                }]}>
+                  <Text style={[styles.contactInitial, { color: theme.text }]}>
+                    {(member.name ?? member.email ?? '?').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+ 
+                {/* Name + status */}
+                <View style={styles.contactInfo}>
+                  <Text style={[styles.contactName, { color: theme.text }]}>
+                    {member.name ?? member.email}
+                    {member.id === user?.id ? ' (You)' : ''}
+                  </Text>
+                  <Text style={[styles.contactPhone, {
+                    color: member.status === 'Available' ? theme.success : theme.danger,
+                  }]}>
+                    {member.status}
+                  </Text>
+                </View>
+ 
+                {/* Distance from wearer */}
+                <View style={styles.distanceWrap}>
+                  <Text style={[styles.distanceValue, { color: theme.text }]}>
+                    {wearerLocation && member.location
+                      ? getDistanceKm(
+                          wearerLocation.latitude, wearerLocation.longitude,
+                          member.location.latitude, member.location.longitude
+                        )
+                      : '—'
+                    }
+                  </Text>
+                  <Text style={[styles.distanceLabel, { color: theme.subText }]}>
+                    from wearer
+                  </Text>
+                </View>
+ 
+                {/* Status badge */}
+                <View style={[styles.statusBadge, {
+                  backgroundColor: member.status === 'Available'
+                    ? 'rgba(74,222,128,0.1)'
+                    : 'rgba(248,113,113,0.1)',
+                }]}>
+                  <Text style={{
+                    color: member.status === 'Available' ? theme.success : theme.danger,
+                    fontSize: 13,
+                    fontWeight: '700',
+                  }}>
+                    {member.status === 'Available' ? '✓' : '✕'}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Emergency Contacts */}
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.sectionHeader}>
@@ -302,29 +417,61 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 16, gap: 16 },
   mapCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   card: { borderRadius: 12, borderWidth: 1 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 12,
+  },
   sectionTitle: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  memberCount: { fontSize: 12, fontWeight: '500' },
   centerBtn: { fontSize: 12, fontWeight: '700' },
   miniAddBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
   miniAddText: { fontSize: 12, fontWeight: '700' },
   map: { width: '100%', height: 240 },
   mapPlaceholder: { height: 240, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 13, textAlign: 'center', paddingBottom: 20 },
-  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1 },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+  },
   contactAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   contactInitial: { fontSize: 14, fontWeight: '800' },
   contactInfo: { flex: 1 },
   contactName: { fontSize: 15, fontWeight: '600' },
   contactPhone: { fontSize: 12, marginTop: 1 },
+  distanceWrap: { alignItems: 'flex-end', marginRight: 8 },
+  distanceValue: { fontSize: 14, fontWeight: '800' },
+  distanceLabel: { fontSize: 10, fontWeight: '500', marginTop: 1 },
+  statusBadge: { borderRadius: 8, padding: 6, minWidth: 28, alignItems: 'center' },
   callBtn: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 8 },
   callBtnText: { fontSize: 12, fontWeight: '700' },
   deleteBtn: { padding: 8, marginLeft: 4 },
   deleteBtnText: { fontSize: 14, fontWeight: '600' },
-  alertRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1 },
+  alertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+  },
   alertIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   alertInfo: { flex: 1 },
   alertMessage: { fontSize: 13, fontWeight: '600' },
   alertTime: { fontSize: 11, marginTop: 2 },
-  testBtn: { borderWidth: 1, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, alignSelf: 'center' },
+  testBtn: {
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: 'rgba(248,113,113,0.08)',
+  },
   testBtnText: { fontSize: 14, fontWeight: '700' },
 });

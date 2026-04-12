@@ -1,33 +1,36 @@
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import {
-    addDoc,
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    onSnapshot,
-    query,
-    serverTimestamp,
-    setDoc,
-    updateDoc,
-    where,
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
 } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    useColorScheme,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useColorScheme,
 } from 'react-native';
+import GuardianActionSheet from '../../components/GuardianActionSheet';
+import GuardianResponseModal from '../../components/GuardianResponseModal';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/authContext';
+import { useGuardianResponse } from '../../hooks/useGuardianResponse';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type GroupMember = {
@@ -73,6 +76,7 @@ function generateCode(): string {
 
 export default function GroupScreen() {
   const { user } = useAuth();
+  const [showActionSheet, setShowActionSheet] = useState(false);
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
 
@@ -109,6 +113,13 @@ export default function GroupScreen() {
   const [joining, setJoining]   = useState(false);
 
   const locationWatcher = useRef<Location.LocationSubscription | null>(null);
+
+  const { activeResponse, dismissResponse, sendResponse, responding } =
+  useGuardianResponse(
+    user?.id,
+    group?.id,
+    user?.email?.split('@')[0]
+  );
 
   // ── On mount: check if user is already in a group ──────────────────────────
   useEffect(() => {
@@ -515,6 +526,14 @@ export default function GroupScreen() {
                 </Text>
             }
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.respondBtn, { backgroundColor: theme.accent }]}
+            onPress={() => setShowActionSheet(true)}
+          >
+            <Text style={[styles.respondBtnText, { color: isDark ? '#000' : '#fff' }]}>
+              Update My Response
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Summary row */}
@@ -597,6 +616,24 @@ export default function GroupScreen() {
         </View>
 
         <View style={{ height: 32 }} />
+        <GuardianActionSheet
+          visible={showActionSheet}
+          responding={responding}
+          onSelect={async (status) => {
+            await sendResponse(status);
+            setShowActionSheet(false);
+          }}
+          onClose={() => setShowActionSheet(false)}
+        />
+
+        <GuardianResponseModal
+          visible={!!activeResponse}
+          guardianName={activeResponse?.guardianName ?? ''}
+          status={activeResponse?.status ?? 'responded'}
+          message={activeResponse?.message ?? ''}
+          timestamp={activeResponse?.timestamp}
+          onDismiss={dismissResponse}
+        />
       </ScrollView>
     </View>
   );
@@ -691,4 +728,6 @@ const styles = StyleSheet.create({
   distanceValue: { fontSize: 15, fontWeight: '800' },
   distanceLabel: { fontSize: 10, fontWeight: '500', marginTop: 1 },
   locationText: { fontSize: 13, lineHeight: 20 },
+  respondBtn: { paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  respondBtnText: { fontSize: 15, fontWeight: '700' },
 });
