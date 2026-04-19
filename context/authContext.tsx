@@ -14,6 +14,7 @@ type User = { id: string; email: string } | null;
 type AuthContextType = {
   user: User;
   isFirstLaunch: boolean | null;
+  isLoadingAuth: boolean; // 1. Add this to your types
   login: (user: User) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]                   = useState<User>(null);
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true); // 2. Initialize as true
 
   // ── On mount: listen to Firebase auth state ────────────────────────────────
   useEffect(() => {
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setUser(null);
       }
+      setIsLoadingAuth(false); // 3. Set to false once Firebase makes a decision
     });
 
     return () => unsubscribe();
@@ -58,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isFirstLaunch, login, logout }}
+      value={{ user, isFirstLaunch, isLoadingAuth, login, logout }}
     >
       {children}
     </AuthContext.Provider>

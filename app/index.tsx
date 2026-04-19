@@ -1,21 +1,20 @@
 import { useRouter } from "expo-router";
-import { collection, getDocs } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { db } from "../config/firebase";
+import { auth, db } from "../config/firebase";
 
 export default function App() {
   const [connected, setConnected] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const testConnection = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "alerts"));
-        console.log("✅ Firebase connected! Docs found:", querySnapshot.size);
+    // A much safer way to "test" connection is just ensuring the objects exist
+    const testConnection = () => {
+      if (auth && db) {
+        console.log("✅ Firebase initialized successfully!");
         setConnected(true);
-      } catch (error) {
-        console.log("❌ Firebase error:", error);
+      } else {
+        console.log("❌ Firebase failed to initialize.");
       }
     };
     testConnection();

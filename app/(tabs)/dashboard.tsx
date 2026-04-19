@@ -93,21 +93,40 @@ export default function DashboardScreen() {
   }, [user]);
 
   useEffect(() => {
-  if (!user) return;
-  (async () => {
-    const userDoc = await getDoc(doc(db, 'users', user.id));
-    if (userDoc.exists() && userDoc.data().groupId) {
-      const groupId = userDoc.data().groupId;
-      onSnapshot(collection(db, 'groups', groupId, 'members'), (snap) => {
-        const list = snap.docs.map(d => ({
-          id: d.id,
-          ...d.data(),
-        })) as GroupMember[];
-        setMembers(list);
-      });
-    }
-  })();
-}, [user]);
+    if (!user) return;
+    
+    // 1. Create a variable to hold the listener cleanup function
+    let unsubscribeMembers: (() => void) | null = null;
+
+    const fetchGroupAndListen = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.id));
+        if (userDoc.exists() && userDoc.data().groupId) {
+          const groupId = userDoc.data().groupId;
+          
+          // 2. Assign the onSnapshot return value to our variable
+          unsubscribeMembers = onSnapshot(collection(db, 'groups', groupId, 'members'), (snap) => {
+            const list = snap.docs.map(d => ({
+              id: d.id,
+              ...d.data(),
+            })) as GroupMember[];
+            setMembers(list);
+          });
+        }
+      } catch (error) {
+        console.error("Error setting up group listener:", error);
+      }
+    };
+
+    fetchGroupAndListen();
+
+    // 3. Clean up the listener when the component unmounts or user changes
+    return () => {
+      if (unsubscribeMembers) {
+        unsubscribeMembers();
+      }
+    };
+  }, [user]);
 
   const requestLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
