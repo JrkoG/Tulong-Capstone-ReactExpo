@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 // ─── Keys ─────────────────────────────────────────────────────────────────────
 const KEYS = {
@@ -27,6 +28,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true); // 2. Initialize as true
 
+  const { registerForPushNotificationsAsync } = usePushNotifications();
+
   // ── On mount: listen to Firebase auth state ────────────────────────────────
   useEffect(() => {
     // Check first launch
@@ -35,9 +38,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Firebase keeps the user logged in automatically — just listen to it
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser({ id: firebaseUser.uid, email: firebaseUser.email! });
+
+       try {
+          await registerForPushNotificationsAsync(firebaseUser.uid);
+        } catch (error) {
+          console.log("Push Registration Error:", error);
+        }
+
       } else {
         setUser(null);
       }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "499151598398",
+    "project_id": "tulong-app-c7aaa",
+    "storage_bucket": "tulong-app-c7aaa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:499151598398:android:d47f9450988b17ae72726f",
+        "android_client_info": {
+          "package_name": "com.tulong.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDeoWrGJvxiLRHhzs8UAesddd6i2iWAp50"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,8 +1,6 @@
-import { initializeApp } from 'firebase/app';
-// 1. Import initializeAuth and getReactNativePersistence
-import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
-// 2. Import AsyncStorage
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeApp } from 'firebase/app';
+import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Your config object
