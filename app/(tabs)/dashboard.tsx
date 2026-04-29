@@ -1,12 +1,19 @@
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { addDoc, collection, deleteDoc, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { getDatabase, onValue, ref } from "firebase/database";
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query
+} from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Linking,
   Platform,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -15,6 +22,7 @@ import {
   useColorScheme
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+
 import PrivacyConsentModal from '../../components/PrivacyConsentModal';
 import SOSModal from '../../components/SOSModal';
 import { db } from '../../config/firebase';
@@ -24,6 +32,7 @@ import { useAlertListener } from '../../hooks/useAlertListener';
 type Contact = { id: string; name: string; phone: string; };
 type AlertLog = { id: string; message: string; timestamp: any; };
 type DeviceLocation = { latitude: number; longitude: number; } | null;
+
 type GroupMember = {
   id: string;
   name: string;
@@ -32,57 +41,97 @@ type GroupMember = {
   location: { latitude: number; longitude: number } | null;
 };
 
-function getDistanceKm(
-  lat1: number, lon1: number,
-  lat2: number, lon2: number
-): string {
+function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): string {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
+
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
     Math.cos((lat2 * Math.PI) / 180) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
   const km = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  if (km < 1) return `${Math.round(km * 1000)}m`;
-  return `${km.toFixed(1)}km`;
+
+  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
 }
 
 export default function DashboardScreen() {
   const { logout, user } = useAuth();
   const { activeAlert, dismissAlert } = useAlertListener(user?.id);
   const router = useRouter();
+
   const isDark = useColorScheme() === 'dark';
+
+  const mapRef = useRef<MapView>(null);
+  const watchRef = useRef<Location.LocationSubscription | null>(null);
+
   const [members, setMembers] = useState<GroupMember[]>([]);
-
-  //  Synchronized Theme Palette 
-  const theme = {
-    background: isDark ? '#000000' : '#FFFFFF', 
-    card: isDark ? '#111111' : '#F9F9F9',
-    text: isDark ? '#FFFFFF' : '#1C1C1E',
-    subText: isDark ? '#888888' : '#666666',
-    border: isDark ? '#222222' : 'rgba(0,0,0,0.06)',
-    accent: isDark ? '#FFFFFF' : '#000000', // Solid buttons/accents
-    brandGold: '#D0A97E',
-    danger: '#f87171',
-    success: '#4ade80'
-  };
-
   const [userLocation, setUserLocation] = useState<DeviceLocation>(null);
   const [wearerLocation, setWearerLocation] = useState<DeviceLocation>(null);
-  const [deviceConnected, setDeviceConnected] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
-  const [locationReady, setLocationReady] = useState(false);
-  const mapRef = useRef<MapView>(null);
+  const [deviceConnected, setDeviceConnected] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [consentGiven, setConsentGiven] = useState(false);
 
+  const theme = {
+    background: isDark ? '#000' : '#fff',
+    card: isDark ? '#111' : '#f9f9f9',
+    text: isDark ? '#fff' : '#111',
+    subText: isDark ? '#888' : '#666',
+    border: isDark ? '#222' : 'rgba(0,0,0,0.06)',
+    accent: isDark ? '#fff' : '#000',
+    danger: '#f87171',
+    success: '#4ade80',
+    brandGold: '#D0A97E',
+  };
+
+  // =========================
+  // LOCATION FIXED
+  // =========================
+  const requestLocation = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+
+    if (status !== 'granted') {
+      Alert.alert('Permission denied', 'Location permission is required');
+      return;
+    }
+
+    const loc = await Location.getCurrentPositionAsync({});
+
+    setUserLocation({
+      latitude: loc.coords.latitude,
+      longitude: loc.coords.longitude,
+    });
+
+    watchRef.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 3000,
+        distanceInterval: 2,
+      },
+      (newLoc) => {
+        setUserLocation({
+          latitude: newLoc.coords.latitude,
+          longitude: newLoc.coords.longitude,
+        });
+      }
+    );
+  };
+
+  // =========================
+  // CONSENT + INIT LOCATION
+  // =========================
   useEffect(() => {
     if (!user) return;
+
     (async () => {
-      const consentDoc = await getDoc(doc(db, 'users', user.id, 'consent', 'privacy'));
+      const consentDoc = await getDoc(
+        doc(db, 'users', user.id, 'consent', 'privacy')
+      );
+
       if (consentDoc.exists() && consentDoc.data().consentGiven) {
         setConsentGiven(true);
         requestLocation();
@@ -90,407 +139,222 @@ export default function DashboardScreen() {
         setShowPrivacy(true);
       }
     })();
+
+    return () => {
+      if (watchRef.current) {
+        watchRef.current.remove();
+        watchRef.current = null;
+      }
+    };
   }, [user]);
 
+  // =========================
+  // FIREBASE RTDB (wearer)
+  // =========================
+  useEffect(() => {
+    const rtdb = getDatabase();
+    const emergencyRef = ref(rtdb, 'emergency');
+
+    const unsub = onValue(emergencyRef, (snapshot) => {
+      const data = snapshot.val();
+
+      if (data?.latitude && data?.longitude) {
+        setWearerLocation({
+          latitude: data.latitude,
+          longitude: data.longitude,
+        });
+
+        setDeviceConnected(true);
+      } else {
+        setWearerLocation(null);
+        setDeviceConnected(false);
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
+  // =========================
+  // CONTACTS
+  // =========================
   useEffect(() => {
     if (!user) return;
-    
-    // 1. Create a variable to hold the listener cleanup function
-    let unsubscribeMembers: (() => void) | null = null;
 
-    const fetchGroupAndListen = async () => {
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.id));
-        if (userDoc.exists() && userDoc.data().groupId) {
-          const groupId = userDoc.data().groupId;
-          
-          // 2. Assign the onSnapshot return value to our variable
-          unsubscribeMembers = onSnapshot(collection(db, 'groups', groupId, 'members'), (snap) => {
-            const list = snap.docs.map(d => ({
-              id: d.id,
-              ...d.data(),
-            })) as GroupMember[];
-            setMembers(list);
-          });
-        }
-      } catch (error) {
-        console.error("Error setting up group listener:", error);
-      }
-    };
-
-    fetchGroupAndListen();
-
-    // 3. Clean up the listener when the component unmounts or user changes
-    return () => {
-      if (unsubscribeMembers) {
-        unsubscribeMembers();
-      }
-    };
-  }, [user]);
-
-  const requestLocation = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return;
-    const loc = await Location.getCurrentPositionAsync({});
-    setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-    setLocationReady(true);
-
-    await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 5 },
-      (newLoc) => {
-        setUserLocation({ latitude: newLoc.coords.latitude, longitude: newLoc.coords.longitude });
+    const unsub = onSnapshot(
+      collection(db, 'users', user.id, 'contacts'),
+      (snap) => {
+        setContacts(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Contact[]
+        );
       }
     );
-  };
 
-  useEffect(() => {
-    if (!user) return;
-    const unsub = onSnapshot(collection(db, 'devices', user.id, 'location'), (snap) => {
-      if (!snap.empty) {
-        const data = snap.docs[0].data();
-        setWearerLocation({ latitude: data.latitude, longitude: data.longitude });
-        setDeviceConnected(true);
-      } else { setDeviceConnected(false); }
-    });
     return () => unsub();
   }, [user]);
 
+  // =========================
+  // ALERTS
+  // =========================
   useEffect(() => {
     if (!user) return;
-    const unsub = onSnapshot(collection(db, 'users', user.id, 'contacts'), (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Contact[];
-      setContacts(list.slice(0, 3));
-    });
-    return () => unsub();
-  }, [user]);
 
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'users', user.id, 'alerts'), orderBy('timestamp', 'desc'), limit(5));
+    const q = query(
+      collection(db, 'users', user.id, 'alerts'),
+      orderBy('timestamp', 'desc'),
+      limit(5)
+    );
+
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as AlertLog[];
-      setAlerts(list);
+      setAlerts(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() })) as AlertLog[]
+      );
     });
+
     return () => unsub();
   }, [user]);
 
-  const handleLogout = async () => {
-    Alert.alert('Log out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log out', style: 'destructive', onPress: async () => { await logout(); router.replace('/(auth)/login'); } },
-    ]);
-  };
+  // =========================
+  // GROUP MEMBERS
+  // =========================
+  useEffect(() => {
+    if (!user) return;
 
-  const handleCall = (phone: string) => Linking.openURL(`tel:${phone}`);
+    let unsubMembers: (() => void) | null = null;
 
-  const handleDeleteContact = (contactId: string, contactName: string) => {
-    Alert.alert('Remove Contact', `Remove ${contactName}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => { 
-          try { await deleteDoc(doc(db, 'users', user!.id, 'contacts', contactId)); } 
-          catch (e) { Alert.alert('Error', 'Failed to remove contact.'); } 
-      }},
-    ]);
-  };
+    const load = async () => {
+      const userDoc = await getDoc(doc(db, 'users', user.id));
 
+      if (userDoc.exists() && userDoc.data().groupId) {
+        const groupId = userDoc.data().groupId;
+
+        unsubMembers = onSnapshot(
+          collection(db, 'groups', groupId, 'members'),
+          (snap) => {
+            setMembers(
+              snap.docs.map((d) => ({
+                id: d.id,
+                ...d.data(),
+              })) as GroupMember[]
+            );
+          }
+        );
+      }
+    };
+
+    load();
+
+    return () => {
+      if (unsubMembers) unsubMembers();
+    };
+  }, [user]);
+
+  // =========================
+  // MAP CENTER
+  // =========================
   const centerMap = () => {
-    if (mapRef.current && userLocation) {
-      mapRef.current.animateToRegion({ ...userLocation, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 800);
-    }
-  };
+    if (!userLocation) return;
 
-  const formatTime = (timestamp: any) => {
-    if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
-
-  const handleTestSOS = async () => {
-  if (!user) return;
-  await addDoc(collection(db, 'users', user.id, 'alerts'), {
-    message: 'SOS! The wearer needs immediate help!',
-    timestamp: serverTimestamp(),
-    seen: false,
-    location: {
-      latitude: userLocation?.latitude ?? 14.5995,
-      longitude: userLocation?.longitude ?? 120.9842,
+    mapRef.current?.animateToRegion(
+      {
+        ...userLocation,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
       },
-    });
+      800
+    );
   };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
-      
-      {/* Top Bar */}
-      <View style={[styles.topBar, { borderBottomColor: theme.border }]}>
-        <View>
-          <Text style={[styles.appName, { color: theme.text }]}>Tulong 🚨</Text>
-          <View style={styles.deviceRow}>
-            <View style={[styles.dot, { backgroundColor: deviceConnected ? theme.success : theme.danger }]} />
-            <Text style={[styles.deviceText, { color: theme.subText }]}>
-              {deviceConnected ? 'Device connected' : 'Device not found'}
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+
+      {/* MAP */}
+      <View style={[styles.mapCard, { borderColor: theme.border }]}>
+        <View style={styles.sectionHeader}>
+          <Text style={{ color: theme.text, fontWeight: '700' }}>
+            Live Location
+          </Text>
+
+          <TouchableOpacity onPress={centerMap}>
+            <Text style={{ color: theme.text }}>Center</Text>
+          </TouchableOpacity>
+        </View>
+
+        {userLocation ? (
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            provider={
+              Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined
+            }
+            region={{
+              latitude: userLocation.latitude,
+              longitude: userLocation.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }}
+          >
+            <Marker coordinate={userLocation} title="You" />
+            {wearerLocation && (
+              <Marker coordinate={wearerLocation} title="Wearer" />
+            )}
+          </MapView>
+        ) : (
+          <View style={styles.mapPlaceholder}>
+            <Text style={{ color: theme.subText }}>
+              Waiting for location...
             </Text>
           </View>
-        </View>
-        <TouchableOpacity style={[styles.logoutBtn, { borderColor: theme.border }]} onPress={handleLogout}>
-          <Text style={[styles.logoutText, { color: theme.text }]}>Log out</Text>
-        </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <PrivacyConsentModal
+        visible={showPrivacy}
+        userId={user?.id ?? ''}
+        onConsent={() => {
+          setShowPrivacy(false);
+          requestLocation();
+        }}
+      />
 
-        {/* Test SOS Button — remove when IoT is connected */}
-        <TouchableOpacity
-          style={[styles.testBtn, { borderColor: theme.danger }]}
-          onPress={handleTestSOS}
-        >
-          <Text style={[styles.testBtnText, { color: theme.danger }]}>
-            🚨 Simulate SOS (Test)
-          </Text>
-        </TouchableOpacity>
-
-        {/* Map Card */}
-        <View style={[styles.mapCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Live Location</Text>
-            <TouchableOpacity onPress={centerMap}>
-              <Text style={[styles.centerBtn, { color: theme.text }]}>Center</Text>
-            </TouchableOpacity>
-          </View>
-
-          {locationReady && userLocation ? (
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-              userInterfaceStyle={isDark ? 'dark' : 'light'}
-              initialRegion={{ ...userLocation, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
-            >
-              <Marker coordinate={userLocation} title="You" pinColor={theme.brandGold} />
-              {wearerLocation && <Marker coordinate={wearerLocation} title="Wearer" pinColor={theme.danger} />}
-            </MapView>
-          ) : (
-            <View style={styles.mapPlaceholder}>
-              <Text style={{ color: theme.subText }}>Getting location…</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Guardian Group */}
-        {members.length > 0 && (
-          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Guardian Group</Text>
-              <Text style={[styles.memberCount, { color: theme.subText }]}>
-                {members.filter(m => m.status === 'Available').length}/{members.length} available
-              </Text>
-            </View>
-            {members.map((member) => (
-              <View
-                key={member.id}
-                style={[styles.contactRow, { borderBottomColor: theme.border }]}
-              >
-                {/* Avatar */}
-                <View style={[styles.contactAvatar, {
-                  backgroundColor: member.status === 'Available'
-                    ? 'rgba(74,222,128,0.1)'
-                    : 'rgba(248,113,113,0.1)',
-                }]}>
-                  <Text style={[styles.contactInitial, { color: theme.text }]}>
-                    {(member.name ?? member.email ?? '?').charAt(0).toUpperCase()}
-                  </Text>
-                </View>
- 
-                {/* Name + status */}
-                <View style={styles.contactInfo}>
-                  <Text style={[styles.contactName, { color: theme.text }]}>
-                    {member.name ?? member.email}
-                    {member.id === user?.id ? ' (You)' : ''}
-                  </Text>
-                  <Text style={[styles.contactPhone, {
-                    color: member.status === 'Available' ? theme.success : theme.danger,
-                  }]}>
-                    {member.status}
-                  </Text>
-                </View>
- 
-                {/* Distance from wearer */}
-                <View style={styles.distanceWrap}>
-                  <Text style={[styles.distanceValue, { color: theme.text }]}>
-                    {wearerLocation && member.location
-                      ? getDistanceKm(
-                          wearerLocation.latitude, wearerLocation.longitude,
-                          member.location.latitude, member.location.longitude
-                        )
-                      : '—'
-                    }
-                  </Text>
-                  <Text style={[styles.distanceLabel, { color: theme.subText }]}>
-                    from wearer
-                  </Text>
-                </View>
- 
-                {/* Status badge */}
-                <View style={[styles.statusBadge, {
-                  backgroundColor: member.status === 'Available'
-                    ? 'rgba(74,222,128,0.1)'
-                    : 'rgba(248,113,113,0.1)',
-                }]}>
-                  <Text style={{
-                    color: member.status === 'Available' ? theme.success : theme.danger,
-                    fontSize: 13,
-                    fontWeight: '700',
-                  }}>
-                    {member.status === 'Available' ? '✓' : '✕'}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Emergency Contacts */}
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Emergency Contacts</Text>
-            {contacts.length < 3 && (
-              <TouchableOpacity 
-                style={[styles.miniAddBtn, { backgroundColor: theme.accent }]}
-                onPress={() => router.push('/(tabs)/add-contact' as any)}
-              >
-                <Text style={[styles.miniAddText, { color: isDark ? '#000' : '#FFF' }]}>+ Add</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          {contacts.length === 0 ? (
-            <Text style={[styles.emptyText, { color: theme.subText }]}>No contacts added yet.</Text>
-          ) : (
-            contacts.map((contact) => (
-              <View key={contact.id} style={[styles.contactRow, { borderBottomColor: theme.border }]}>
-                <View style={[styles.contactAvatar, { backgroundColor: theme.border }]}>
-                  <Text style={[styles.contactInitial, { color: theme.text }]}>{contact.name.charAt(0).toUpperCase()}</Text>
-                </View>
-                <View style={styles.contactInfo}>
-                  <Text style={[styles.contactName, { color: theme.text }]}>{contact.name}</Text>
-                  <Text style={[styles.contactPhone, { color: theme.subText }]}>{contact.phone}</Text>
-                </View>
-                <TouchableOpacity 
-                  style={[styles.callBtn, { backgroundColor: theme.accent }]} 
-                  onPress={() => handleCall(contact.phone)}
-                >
-                  <Text style={[styles.callBtnText, { color: isDark ? '#000' : '#FFF' }]}>Call</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteContact(contact.id, contact.name)}>
-                  <Text style={[styles.deleteBtnText, { color: theme.danger }]}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
-        </View>
-
-        {/* Recent Alerts */}
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text, padding: 16 }]}>Recent Alerts</Text>
-          {alerts.length === 0 ? (
-            <Text style={[styles.emptyText, { color: theme.subText }]}>No alerts yet.</Text>
-          ) : (
-            alerts.map((alert) => (
-              <View key={alert.id} style={[styles.alertRow, { borderBottomColor: theme.border }]}>
-                <View style={[styles.alertIcon, { backgroundColor: theme.border }]}><Text style={{color: theme.text}}>⚠</Text></View>
-                <View style={styles.alertInfo}>
-                  <Text style={[styles.alertMessage, { color: theme.text }]}>{alert.message}</Text>
-                  <Text style={[styles.alertTime, { color: theme.subText }]}>{formatTime(alert.timestamp)}</Text>
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-        <View style={{ height: 32 }} />
-      </ScrollView>
-
-      <PrivacyConsentModal visible={showPrivacy} userId={user?.id ?? ''} onConsent={() => { setShowPrivacy(false); setConsentGiven(true); requestLocation(); }} />
-      <SOSModal visible={!!activeAlert} message={activeAlert?.message ?? ''} location={activeAlert?.location} timestamp={activeAlert?.timestamp} onDismiss={dismissAlert} />
+      <SOSModal
+        visible={!!activeAlert}
+        message={activeAlert?.message ?? ''}
+        location={activeAlert?.location}
+        timestamp={activeAlert?.timestamp}
+        onDismiss={dismissAlert}
+      />
     </View>
   );
 }
 
+// =========================
+// STYLES
+// =========================
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
+
+  mapCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    margin: 16,
   },
-  appName: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
-  deviceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  deviceText: { fontSize: 12, fontWeight: '500' },
-  logoutBtn: { borderWidth: 1, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
-  logoutText: { fontSize: 12, fontWeight: '700' },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16, gap: 16 },
-  mapCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
-  card: { borderRadius: 12, borderWidth: 1 },
+
+  map: {
+    width: '100%',
+    height: 250,
+  },
+
+  mapPlaceholder: {
+    height: 250,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    paddingBottom: 12,
+    padding: 12,
   },
-  sectionTitle: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  memberCount: { fontSize: 12, fontWeight: '500' },
-  centerBtn: { fontSize: 12, fontWeight: '700' },
-  miniAddBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
-  miniAddText: { fontSize: 12, fontWeight: '700' },
-  map: { width: '100%', height: 240 },
-  mapPlaceholder: { height: 240, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { fontSize: 13, textAlign: 'center', paddingBottom: 20 },
-  contactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-  },
-  contactAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  contactInitial: { fontSize: 14, fontWeight: '800' },
-  contactInfo: { flex: 1 },
-  contactName: { fontSize: 15, fontWeight: '600' },
-  contactPhone: { fontSize: 12, marginTop: 1 },
-  distanceWrap: { alignItems: 'flex-end', marginRight: 8 },
-  distanceValue: { fontSize: 14, fontWeight: '800' },
-  distanceLabel: { fontSize: 10, fontWeight: '500', marginTop: 1 },
-  statusBadge: { borderRadius: 8, padding: 6, minWidth: 28, alignItems: 'center' },
-  callBtn: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 8 },
-  callBtnText: { fontSize: 12, fontWeight: '700' },
-  deleteBtn: { padding: 8, marginLeft: 4 },
-  deleteBtnText: { fontSize: 14, fontWeight: '600' },
-  alertRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-  },
-  alertIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  alertInfo: { flex: 1 },
-  alertMessage: { fontSize: 13, fontWeight: '600' },
-  alertTime: { fontSize: 11, marginTop: 2 },
-  testBtn: {
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    backgroundColor: 'rgba(248,113,113,0.08)',
-  },
-  testBtnText: { fontSize: 14, fontWeight: '700' },
 });

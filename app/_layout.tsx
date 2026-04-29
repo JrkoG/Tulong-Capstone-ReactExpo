@@ -24,7 +24,7 @@ function RouteGuard() {
 
     // 3. First time ever opening the app → register
     if (isFirstLaunch && !user) {
-      router.replace('/(auth)/register');
+      router.replace('/(auth)/login');
       return;
     }
 
