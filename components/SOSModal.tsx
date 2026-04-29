@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useRef } from 'react'; // Added useEffect
 import {
   Animated,
   Easing,
@@ -19,126 +20,75 @@ type Props = {
 };
 
 export default function SOSModal({ visible, message, location, timestamp, onDismiss }: Props) {
-  const pulseAnim  = useRef(new Animated.Value(1)).current;
-  const fadeAnim   = useRef(new Animated.Value(0)).current;
-  const slideAnim  = useRef(new Animated.Value(60)).current;
+  const router = useRouter();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(60)).current;
 
-  // ── Entrance animation ────────────────────────────────────────────────────
+  // 🔥 FIX 1: Add the Animation Trigger
   useEffect(() => {
     if (visible) {
-      // Vibrate phone
-      Vibration.vibrate([0, 500, 200, 500, 200, 500]);
+      // Vibrate to alert user
+      Vibration.vibrate([0, 500, 200, 500]);
 
-      // Fade + slide in
+      // Start the "Fade In" and "Slide Up" animation
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 300,
+          duration: 400,
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 300,
-          easing: Easing.out(Easing.cubic),
+          duration: 400,
+          easing: Easing.out(Easing.back(1)),
           useNativeDriver: true,
         }),
       ]).start();
-
-      // Pulse animation on the SOS icon
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.15,
-            duration: 600,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 600,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
     } else {
+      // Reset values when modal is closed
       fadeAnim.setValue(0);
       slideAnim.setValue(60);
-      pulseAnim.setValue(1);
-      Vibration.cancel();
     }
-  }, [visible, fadeAnim, slideAnim, pulseAnim]);
+  }, [visible]);
 
-  const formatTime = (ts: any) => {
-    if (!ts) return '';
-    const date = ts.toDate ? ts.toDate() : new Date(ts);
-    return date.toLocaleTimeString('en-PH', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+  const handleOkayPress = () => {
+    onDismiss(); 
+    router.push('/tracker'); 
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      statusBarTranslucent
-    >
-      <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
-        <Animated.View
+    <Modal visible={visible} transparent animationType="none">
+      <View style={styles.overlay}>
+        {/* 🔥 FIX 2: Apply the animations to the View */}
+        <Animated.View 
           style={[
-            styles.card,
-            { transform: [{ translateY: slideAnim }] },
+            styles.modalCard,
+            { 
+              opacity: fadeAnim, // This makes it visible
+              transform: [{ translateY: slideAnim }] // This makes it slide up
+            }
           ]}
         >
-          {/* Pulsing SOS icon */}
-          <Animated.View style={[styles.iconWrap, { transform: [{ scale: pulseAnim }] }]}>
+          <View style={styles.iconWrap}>
             <Text style={styles.icon}>🚨</Text>
-          </Animated.View>
-
-          {/* Title */}
+          </View>
+          
           <Text style={styles.title}>SOS ALERT</Text>
-          <Text style={styles.subtitle}>The wearer needs immediate help!</Text>
+          <Text style={styles.message}>{message}</Text>
 
-          {/* Divider */}
           <View style={styles.divider} />
 
-          {/* Message */}
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Message</Text>
-            <Text style={styles.infoValue}>{message}</Text>
-          </View>
-
-          {/* Location if available */}
-          {location && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Location</Text>
-              <Text style={styles.infoValue}>
-                {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
-              </Text>
-            </View>
-          )}
-
-          {/* Time */}
-          {timestamp && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Time</Text>
-              <Text style={styles.infoValue}>{formatTime(timestamp)}</Text>
-            </View>
-          )}
-
-          {/* Okay button */}
           <TouchableOpacity
             style={styles.okayBtn}
-            onPress={onDismiss}
+            onPress={handleOkayPress}
             activeOpacity={0.85}
           >
             <Text style={styles.okayBtnText}>Okay</Text>
           </TouchableOpacity>
         </Animated.View>
-      </Animated.View>
+      </View>
     </Modal>
   );
 }
@@ -146,86 +96,36 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
   },
-  card: {
-    backgroundColor: '#13131f',
-    borderRadius: 24,
-    padding: 28,
+  modalCard: {
+    backgroundColor: '#1c1c1e',
     width: '100%',
+    borderRadius: 24,
+    padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(248,113,113,0.3)',
-    gap: 12,
+    borderColor: '#f87171',
   },
   iconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(248,113,113,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: 'rgba(248,113,113,0.1)',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 16
   },
-  icon: {
-    fontSize: 36,
-  },
-  title: {
-    color: '#f87171',
-    fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  subtitle: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  divider: {
-    width: '100%',
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    marginVertical: 4,
-  },
-  infoRow: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  infoLabel: {
-    color: 'rgba(255,255,255,0.35)',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  infoValue: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '500',
-    flex: 1,
-    textAlign: 'right',
-  },
+  icon: { fontSize: 40 },
+  title: { color: '#f87171', fontSize: 24, fontWeight: '900', marginBottom: 8 },
+  message: { color: '#fff', textAlign: 'center', fontSize: 16, marginBottom: 20 },
+  divider: { width: '100%', height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 20 },
   okayBtn: {
-    backgroundColor: '#f87171',
-    borderRadius: 14,
-    paddingVertical: 14,
+    backgroundColor: '#D0A97E',
     width: '100%',
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#f87171',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
   },
-  okayBtnText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
+  okayBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });

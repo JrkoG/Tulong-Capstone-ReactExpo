@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { onValue, ref } from "firebase/database";
 import {
   collection,
@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -17,6 +18,7 @@ import {
   View
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+
 
 import PrivacyConsentModal from '../../components/PrivacyConsentModal';
 import SOSModal from '../../components/SOSModal';
@@ -83,10 +85,13 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* 2. Add this line to hide the system header */}
+      <Stack.Screen options={{ headerShown: false }} /> 
+      
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       
-      {/* 1. RESTORED HEADER WITH LOGOUT */}
-      <View style={[styles.header, { paddingTop: 60 }]}>
+      {/* 3. This is your custom header */}
+      <View style={[styles.header, { paddingTop: Platform.OS === 'ios' ? 60 : 40 }]}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Dashboard</Text>
         <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
           <Ionicons name="log-out-outline" size={24} color={theme.text} />
@@ -119,7 +124,20 @@ export default function DashboardScreen() {
 
         {/* 3. RESTORED CONTACTS SECTION */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Emergency Contacts</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Emergency Contacts</Text>
+            
+            {/* ADD BUTTON */}
+            <TouchableOpacity 
+              style={styles.addButton} 
+              onPress={() => router.push('/add-contact')} // Links to your add-contact file
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add-circle" size={24} color={theme.brandGold} />
+              <Text style={[styles.addButtonText, { color: theme.brandGold }]}>Add</Text>
+            </TouchableOpacity>
+          </View>
+
           {contacts.length > 0 ? (
             contacts.map(contact => (
               <View key={contact.id} style={[styles.itemCard, { backgroundColor: theme.card }]}>
@@ -128,7 +146,9 @@ export default function DashboardScreen() {
               </View>
             ))
           ) : (
-            <Text style={{ color: theme.subText, marginLeft: 16 }}>No contacts added.</Text>
+            <Text style={{ color: theme.subText, marginLeft: 0, marginTop: 8 }}>
+              No contacts added.
+            </Text>
           )}
         </View>
 
@@ -162,4 +182,23 @@ const styles = StyleSheet.create({
   section: { paddingHorizontal: 16, marginBottom: 20 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
   itemCard: { padding: 15, borderRadius: 10, marginBottom: 8, flexDirection: 'column' },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4, // Space between icon and text
+  },
+  addButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });

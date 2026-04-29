@@ -25,14 +25,15 @@ export function useAlertListener(userId: string | undefined) {
     const alertsRef = query(ref(rtdb, `users/${userId}/alerts`), limitToLast(1));
 
     const unsub = onValue(alertsRef, async (snapshot) => {
-      if (!snapshot.exists()) return;
+  if (!snapshot.exists()) return;
 
-      const dataMap = snapshot.val();
-      const alertId = Object.keys(dataMap)[0];
-      const data = dataMap[alertId];
+  const dataMap = snapshot.val();
+  // Get the IDs and pick the very last one (the most recent)
+  const alertIds = Object.keys(dataMap);
+  const alertId = alertIds[alertIds.length - 1]; 
+  const data = dataMap[alertId];
 
-      // Trigger modal if seen is false
-      if (data && data.seen === false) {
+  if (data && data.seen === false) {
         const alert: SOSAlert = {
           id: alertId,
           message: data.message || 'SOS! The wearer needs help!',
