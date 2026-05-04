@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import { onValue, ref } from "firebase/database";
 import {
   collection,
@@ -18,6 +18,7 @@ import {
   View
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import QuickBar from '../../components/QuickBar';
 
 
 import PrivacyConsentModal from '../../components/PrivacyConsentModal';
@@ -34,7 +35,10 @@ export default function DashboardScreen() {
   const { logout, user } = useAuth();
   const { activeAlert, dismissAlert } = useAlertListener(user?.id);
   const router = useRouter();
-  const isDark = useColorScheme() === 'dark';
+  const pathname = usePathname();
+  const colorScheme = useColorScheme(); // This returns 'light' or 'dark'
+  const isDark = colorScheme === 'dark'; // This creates the boolean you were looking for
+  const [deviceStatus, setDeviceStatus] = useState({ battery: 0, signal: 'Offline', lastSeen: '' });
 
   const mapRef = useRef<MapView>(null);
   const watchRef = useRef<Location.LocationSubscription | null>(null);
@@ -56,13 +60,20 @@ export default function DashboardScreen() {
 
   // --- RESTORED LISTENERS ---
   useEffect(() => {
-    if (!user?.id) return;
-    const wearerRef = ref(rtdb, `users/${user.id}/location`);
-    return onValue(wearerRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) setWearerLocation({ latitude: data.latitude, longitude: data.longitude });
-    });
-  }, [user?.id]);
+  if (!user?.id) return;
+  // Listening to the device path we discussed
+  const deviceRef = ref(rtdb, `users/${user.id}/device_health`); 
+  return onValue(deviceRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      setDeviceStatus({
+        battery: data.battery || 0,
+        signal: data.online ? 'Strong' : 'Weak',
+        lastSeen: data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'Unknown'
+      });
+    }
+  });
+}, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -99,6 +110,37 @@ export default function DashboardScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* 1. DEVICE HEALTH SECTION */}
+        <View style={[styles.healthCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={styles.healthHeader}>
+            <Text style={[styles.healthTitle, { color: theme.text }]}>Wearable Health</Text>
+            <Text style={{ color: theme.subText, fontSize: 10 }}>Last synced: {deviceStatus.lastSeen}</Text>
+          </View>
+          
+          <View style={styles.indicatorRow}>
+            {/* Battery */}
+            <View style={styles.indicatorItem}>
+              <Ionicons 
+                name={deviceStatus.battery > 20 ? "battery-charging" : "battery-dead"} 
+                size={20} 
+                color={deviceStatus.battery > 20 ? "#4ade80" : "#f87171"} 
+              />
+              <Text style={[styles.indicatorVal, { color: theme.text }]}>{deviceStatus.battery}%</Text>
+              <Text style={styles.indicatorLabel}>Battery</Text>
+            </View>
+
+            {/* Signal */}
+            <View style={styles.indicatorItem}>
+              <Ionicons 
+                name="cellular" 
+                size={20} 
+                color={deviceStatus.signal === 'Strong' ? theme.brandGold : theme.subText} 
+              />
+              <Text style={[styles.indicatorVal, { color: theme.text }]}>{deviceStatus.signal}</Text>
+              <Text style={styles.indicatorLabel}>Signal</Text>
+            </View>
+          </View>
+        </View>
         {/* 2. MAP SECTION */}
         <View style={[styles.mapCard, { borderColor: theme.border }]}>
           <View style={styles.sectionHeader}>
@@ -164,6 +206,8 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
+      <QuickBar />
+
       <PrivacyConsentModal visible={showPrivacy} userId={user?.id ?? ''} onConsent={() => setShowPrivacy(false)} />
       <SOSModal visible={!!activeAlert} message={activeAlert?.message ?? ''} onDismiss={dismissAlert} />
     </View>
@@ -200,5 +244,31 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  healthCard: { margin: 16, padding: 16, borderRadius: 12, borderWidth: 1 },
+  healthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  healthTitle: { fontSize: 14, fontWeight: '700', textTransform: 'uppercase' },
+  indicatorRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  indicatorItem: { alignItems: 'center' },
+  indicatorVal: { fontSize: 16, fontWeight: '800', marginTop: 4 },
+  indicatorLabel: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
+  quickBar: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 35 : 20, // This lifts it above the iPhone home bar
+    left: 20,
+    right: 20,
+    height: 65,
+    borderRadius: 32.5,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    // Shadow for the floating effect
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
 });

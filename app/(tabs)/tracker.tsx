@@ -1,11 +1,32 @@
 import * as Location from "expo-location";
+import { Stack, usePathname, useRouter } from 'expo-router';
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+  useColorScheme
+} from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import QuickBar from '../../components/QuickBar';
 
 export default function TrackerScreen() {
+  const router = useRouter(); // Required for quickbar navigation
+  const isDark = useColorScheme() === 'dark'; // Required for dynamic styling
+  const pathname = usePathname();
+  
+  // Define theme colors to match your other screens
+  const theme = {
+    background: isDark ? '#000' : '#fff',
+    text: isDark ? '#fff' : '#111',
+    brandGold: '#D0A97E',
+  };
+
   const [location, setLocation] = useState<any>(null);
-  const [wearerLocation, setWearerLocation] = useState<any>(null); // State for the wearer
+  const [wearerLocation, setWearerLocation] = useState<any>(null);
   const [active, setActive] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -46,70 +67,60 @@ export default function TrackerScreen() {
     return () => subscription?.remove();
   }, []);
 
-  // 🔥 2. HARD-CODED WEARER LOCATION (MOCK DATA)
+  // 2. HARD-CODED WEARER LOCATION (MOCK DATA)
   useEffect(() => {
-    // This overrides the Firebase data for testing
-    // Change these numbers to whatever location you want to test!
-    const mockLat = 14.4589; // Example: Manila
+    const mockLat = 14.4589; 
     const mockLng = 120.9603;
 
     setWearerLocation({
       latitude: mockLat,
       longitude: mockLng,
     });
-    setActive(true); // Force the marker to be visible
-    
-    /* // Commented out the real Firebase logic while testing
-    const emergencyRef = ref(rtdb, "emergency");
-    const unsub = onValue(emergencyRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data?.latitude && data?.longitude) {
-        setWearerLocation({ latitude: data.latitude, longitude: data.longitude });
-        setActive(true);
-      }
-    });
-    return () => unsub(); 
-    */
+    setActive(true);
   }, []);
 
   if (loading || !location) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#D0A97E" />
-        <Text style={{ marginTop: 10 }}>Waiting for GPS data...</Text>
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.brandGold} />
+        <Text style={{ marginTop: 10, color: theme.text }}>Waiting for GPS data...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+
       <MapView
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         initialRegion={{
           latitude: location.latitude,
           longitude: location.longitude,
-          latitudeDelta: 0.05, // Slightly zoomed out to see both markers
+          latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
       >
-        {/* YOUR LOCATION (Phone) */}
         <Marker 
           coordinate={location} 
           title="My Phone" 
           description="Your current location"
         />
 
-        {/* WEARER LOCATION (Mocked Hardware) */}
         {active && wearerLocation && (
           <Marker
             coordinate={wearerLocation}
             title="Wearer Device"
             description="Emergency Device Location"
-            pinColor="blue" // Blue for the wearer
+            pinColor="blue"
           />
         )}
       </MapView>
+
+      {/* --- FLOATING QUICK BAR --- */}
+      <QuickBar />
     </View>
   );
 }
@@ -118,4 +129,23 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { width: "100%", height: "100%" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  tabItem: { alignItems: 'center', justifyContent: 'center' },
+  quickBar: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 35 : 20, // Lifted for iPhone home bar
+    left: 20,
+    right: 20,
+    height: 65,
+    borderRadius: 32.5,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
 });
