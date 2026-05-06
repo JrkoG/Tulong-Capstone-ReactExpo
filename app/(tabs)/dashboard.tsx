@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { Stack, usePathname, useRouter } from 'expo-router';
-import { onValue, ref } from "firebase/database";
+import { limitToLast, onValue, query, ref } from "firebase/database";
 import {
   collection,
+  doc,
+  getDoc,
   onSnapshot
 } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
@@ -39,6 +41,8 @@ export default function DashboardScreen() {
   const colorScheme = useColorScheme(); // This returns 'light' or 'dark'
   const isDark = colorScheme === 'dark'; // This creates the boolean you were looking for
   const [deviceStatus, setDeviceStatus] = useState({ battery: 0, signal: 'Offline', lastSeen: '' });
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [latestResponse, setLatestResponse] = useState<any>(null);
 
   const mapRef = useRef<MapView>(null);
   const watchRef = useRef<Location.LocationSubscription | null>(null);
@@ -93,6 +97,31 @@ export default function DashboardScreen() {
       }
     });
   }, [user?.id]);
+
+    // 1. Fetch the user's Group ID
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchGroup = async () => {
+      const userDoc = await getDoc(doc(db, 'users', user.id));
+      if (userDoc.exists()) setGroupId(userDoc.data().groupId);
+    };
+    fetchGroup();
+  }, [user?.id]);
+
+  // 2. Listen for the latest Guardian update in that group
+  useEffect(() => {
+    if (!groupId) return;
+    
+    const responseRef = query(ref(rtdb, `groups/${groupId}/alerts`), limitToLast(1));
+    
+    return onValue(responseRef, (snapshot) => {
+      if (snapshot.exists()) {
+        snapshot.forEach((child) => {
+          setLatestResponse(child.val());
+        });
+      }
+    });
+  }, [groupId]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -194,6 +223,40 @@ export default function DashboardScreen() {
           )}
         </View>
 
+        {/* GUARDIAN SUMMARY SECTION */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Guardian Summary</Text>
+          <View style={[styles.itemCard, { 
+            backgroundColor: theme.card, 
+            borderLeftWidth: 4, 
+            borderLeftColor: latestResponse?.status === 'active' ? '#fb923c' : '#4ade80' 
+          }]}>
+            {latestResponse ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={styles.summaryIconCircle}>
+                  <Text style={{ fontSize: 20 }}>
+                    {latestResponse.currentStatus === 'on_the_way' ? '🚗' : 
+                      latestResponse.currentStatus === 'arrived' ? '📍' : '✅'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontWeight: '700' }}>
+                    {latestResponse.lastResponderName || "Waiting for response..."}
+                  </Text>
+                  <Text style={{ color: theme.subText, fontSize: 12 }}>
+                    Status: {latestResponse.currentStatus?.replace('_', ' ') || "No active alerts"}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => router.push('/group')}>
+                  <Ionicons name="chevron-forward" size={20} color={theme.brandGold} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={{ color: theme.subText }}>No recent guardian activity.</Text>
+            )}
+          </View>
+        </View>
+
         {/* 4. RESTORED RECENT ALERTS SECTION */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Alerts</Text>
@@ -270,5 +333,13 @@ const styles = StyleSheet.create({
     elevation: 10,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
+  },
+  summaryIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
