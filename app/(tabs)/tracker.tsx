@@ -1,9 +1,8 @@
 import * as Location from "expo-location";
-import { Stack, usePathname, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   StatusBar,
   StyleSheet,
   Text,
@@ -13,15 +12,25 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import QuickBar from '../../components/QuickBar';
 
+// Dark map style configuration
+const darkMapStyle = [
+  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+];
+
 export default function TrackerScreen() {
-  const router = useRouter(); // Required for quickbar navigation
-  const isDark = useColorScheme() === 'dark'; // Required for dynamic styling
-  const pathname = usePathname();
-  
-  // Define theme colors to match your other screens
+  const router = useRouter();
+  const systemColorScheme = useColorScheme();
+  const isDark = systemColorScheme === 'dark';
+
   const theme = {
-    background: isDark ? '#000' : '#fff',
-    text: isDark ? '#fff' : '#111',
+    background: isDark ? '#000000' : '#ffffff',
+    text: isDark ? '#ffffff' : '#111111',
     brandGold: '#D0A97E',
   };
 
@@ -67,14 +76,11 @@ export default function TrackerScreen() {
     return () => subscription?.remove();
   }, []);
 
-  // 2. HARD-CODED WEARER LOCATION (MOCK DATA)
+  // 2. HARD-CODED WEARER LOCATION
   useEffect(() => {
-    const mockLat = 14.4589; 
-    const mockLng = 120.9603;
-
     setWearerLocation({
-      latitude: mockLat,
-      longitude: mockLng,
+      latitude: 14.4589,
+      longitude: 120.9603,
     });
     setActive(true);
   }, []);
@@ -96,6 +102,7 @@ export default function TrackerScreen() {
       <MapView
         style={styles.map}
         provider={PROVIDER_GOOGLE}
+        customMapStyle={isDark ? darkMapStyle : []} // Applies dark mode to map
         initialRegion={{
           latitude: location.latitude,
           longitude: location.longitude,
@@ -119,7 +126,6 @@ export default function TrackerScreen() {
         )}
       </MapView>
 
-      {/* --- FLOATING QUICK BAR --- */}
       <QuickBar />
     </View>
   );
@@ -129,23 +135,4 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { width: "100%", height: "100%" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  tabItem: { alignItems: 'center', justifyContent: 'center' },
-  quickBar: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 35 : 20, // Lifted for iPhone home bar
-    left: 20,
-    right: 20,
-    height: 65,
-    borderRadius: 32.5,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
 });

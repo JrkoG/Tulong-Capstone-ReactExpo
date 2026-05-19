@@ -1,345 +1,266 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
-import { Stack, usePathname, useRouter } from 'expo-router';
-import { limitToLast, onValue, query, ref } from "firebase/database";
+import { Tabs, useRouter } from 'expo-router';
+import React from 'react';
 import {
-  collection,
-  doc,
-  getDoc,
-  onSnapshot
-} from 'firebase/firestore';
-import { useEffect, useRef, useState } from 'react';
-import {
+  Alert,
   Platform,
+  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TouchableOpacity, // Added ScrollView for the lists
-  useColorScheme,
-  View
+  TouchableOpacity,
+  View,
+  useColorScheme
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import QuickBar from '../../components/QuickBar';
-
-
-import PrivacyConsentModal from '../../components/PrivacyConsentModal';
-import SOSModal from '../../components/SOSModal';
-import { db, rtdb } from '../../config/firebase';
-import { useAuth } from '../../context/authContext';
-import { useAlertListener } from '../../hooks/useAlertListener';
-
-type Contact = { id: string; name: string; phone: string; };
-type AlertLog = { id: string; message: string; timestamp: any; };
-type DeviceLocation = { latitude: number; longitude: number; } | null;
+import { auth } from '../../config/firebase';
 
 export default function DashboardScreen() {
-  const { logout, user } = useAuth();
-  const { activeAlert, dismissAlert } = useAlertListener(user?.id);
   const router = useRouter();
-  const pathname = usePathname();
-  const colorScheme = useColorScheme(); // This returns 'light' or 'dark'
-  const isDark = colorScheme === 'dark'; // This creates the boolean you were looking for
-  const [deviceStatus, setDeviceStatus] = useState({ battery: 0, signal: 'Offline', lastSeen: '' });
-  const [groupId, setGroupId] = useState<string | null>(null);
-  const [latestResponse, setLatestResponse] = useState<any>(null);
+  
+  // SMART THEME: Automatically follows system settings (Light/Dark)
+  const systemColorScheme = useColorScheme();
+  const isDark = systemColorScheme === 'dark';
 
-  const mapRef = useRef<MapView>(null);
-  const watchRef = useRef<Location.LocationSubscription | null>(null);
-
-  const [userLocation, setUserLocation] = useState<DeviceLocation>(null);
-  const [wearerLocation, setWearerLocation] = useState<DeviceLocation>(null);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [alerts, setAlerts] = useState<AlertLog[]>([]);
-  const [showPrivacy, setShowPrivacy] = useState(false);
-
+  // THEME COLORS
   const theme = {
-    background: isDark ? '#000' : '#fff',
-    card: isDark ? '#111' : '#f9f9f9',
-    text: isDark ? '#fff' : '#111',
-    subText: isDark ? '#888' : '#666',
-    border: isDark ? '#222' : 'rgba(0,0,0,0.06)',
+    background: isDark ? '#000000' : '#f8f9fa',
+    cardBackground: isDark ? '#121212' : '#ffffff',
+    textPrimary: isDark ? '#ffffff' : '#111111',
+    textSecondary: isDark ? '#9ca3af' : '#6b7280',
     brandGold: '#D0A97E',
+    border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+    danger: '#ef4444',
   };
 
-  // --- RESTORED LISTENERS ---
-  useEffect(() => {
-  if (!user?.id) return;
-  // Listening to the device path we discussed
-  const deviceRef = ref(rtdb, `users/${user.id}/device_health`); 
-  return onValue(deviceRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      setDeviceStatus({
-        battery: data.battery || 0,
-        signal: data.online ? 'Strong' : 'Weak',
-        lastSeen: data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'Unknown'
-      });
-    }
-  });
-}, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    return onSnapshot(collection(db, 'users', user.id, 'contacts'), (snap) => {
-      setContacts(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Contact[]);
-    });
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    const alertsRef = ref(rtdb, `users/${user.id}/alerts`);
-    return onValue(alertsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const list = Object.keys(data).map(key => ({ id: key, ...data[key] })).reverse().slice(0, 5);
-        setAlerts(list as AlertLog[]);
-      }
-    });
-  }, [user?.id]);
-
-    // 1. Fetch the user's Group ID
-  useEffect(() => {
-    if (!user?.id) return;
-    const fetchGroup = async () => {
-      const userDoc = await getDoc(doc(db, 'users', user.id));
-      if (userDoc.exists()) setGroupId(userDoc.data().groupId);
-    };
-    fetchGroup();
-  }, [user?.id]);
-
-  // 2. Listen for the latest Guardian update in that group
-  useEffect(() => {
-    if (!groupId) return;
-    
-    const responseRef = query(ref(rtdb, `groups/${groupId}/alerts`), limitToLast(1));
-    
-    return onValue(responseRef, (snapshot) => {
-      if (snapshot.exists()) {
-        snapshot.forEach((child) => {
-          setLatestResponse(child.val());
-        });
-      }
-    });
-  }, [groupId]);
+  const handleLogoutPress = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to log out of Tulong App?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Log Out", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await auth.signOut();
+            } catch (error) {
+              Alert.alert("Error", "Failed to log out cleanly.");
+            }
+          } 
+        }
+      ]
+    );
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* 2. Add this line to hide the system header */}
-      <Stack.Screen options={{ headerShown: false }} /> 
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <Tabs.Screen options={{ headerShown: false }} />
       
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       
-      {/* 3. This is your custom header */}
-      <View style={[styles.header, { paddingTop: Platform.OS === 'ios' ? 60 : 40 }]}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Dashboard</Text>
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-          <Ionicons name="log-out-outline" size={24} color={theme.text} />
-        </TouchableOpacity>
+      {/* ─── HEADER ROW ─── */}
+      <View style={styles.headerRow}>
+        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Dashboard</Text>
+        
+        <View style={styles.headerActions}>
+          {/* Logout Icon */}
+          <TouchableOpacity 
+            style={styles.iconButton} 
+            onPress={handleLogoutPress}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={26} color={theme.textPrimary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* 1. DEVICE HEALTH SECTION */}
-        <View style={[styles.healthCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={styles.healthHeader}>
-            <Text style={[styles.healthTitle, { color: theme.text }]}>Wearable Health</Text>
-            <Text style={{ color: theme.subText, fontSize: 10 }}>Last synced: {deviceStatus.lastSeen}</Text>
+      <ScrollView 
+        contentContainerStyle={styles.scrollPaddingBottom}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* WEARER HEALTH CARD */}
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={[styles.cardTitle, { color: theme.textSecondary }]}>WEARER HEALTH</Text>
+            <Text style={[styles.timeText, { color: theme.textSecondary }]}>Last synced: --</Text>
           </View>
-          
-          <View style={styles.indicatorRow}>
-            {/* Battery */}
-            <View style={styles.indicatorItem}>
-              <Ionicons 
-                name={deviceStatus.battery > 20 ? "battery-charging" : "battery-dead"} 
-                size={20} 
-                color={deviceStatus.battery > 20 ? "#4ade80" : "#f87171"} 
-              />
-              <Text style={[styles.indicatorVal, { color: theme.text }]}>{deviceStatus.battery}%</Text>
-              <Text style={styles.indicatorLabel}>Battery</Text>
+          <View style={styles.healthStatsRow}>
+            <View style={styles.statBox}>
+              <Ionicons name="battery-dead" size={28} color={theme.danger} />
+              <Text style={[styles.statValue, { color: theme.textPrimary }]}>0%</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>BATTERY</Text>
             </View>
-
-            {/* Signal */}
-            <View style={styles.indicatorItem}>
-              <Ionicons 
-                name="cellular" 
-                size={20} 
-                color={deviceStatus.signal === 'Strong' ? theme.brandGold : theme.subText} 
-              />
-              <Text style={[styles.indicatorVal, { color: theme.text }]}>{deviceStatus.signal}</Text>
-              <Text style={styles.indicatorLabel}>Signal</Text>
+            <View style={styles.statBox}>
+              <Ionicons name="cellular-outline" size={28} color={theme.textSecondary} />
+              <Text style={[styles.statValue, { color: theme.textPrimary }]}>Offline</Text>
+              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>SIGNAL</Text>
             </View>
           </View>
         </View>
-        {/* 2. MAP SECTION */}
-        <View style={[styles.mapCard, { borderColor: theme.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={{ color: theme.text, fontWeight: '700' }}>Live Tracking</Text>
-            <TouchableOpacity onPress={() => mapRef.current?.animateToRegion({...userLocation!, latitudeDelta: 0.01, longitudeDelta: 0.01})}>
-              <Text style={{ color: theme.brandGold }}>Center</Text>
+
+        {/* LIVE TRACKING MAP CONTAINER */}
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>Live Tracking</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/tracker')}>
+              <Text style={{ color: theme.brandGold, fontWeight: '600', fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif' }}>Center</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.mapContainer}>
-            {userLocation && (
-              <MapView
-                ref={mapRef}
-                style={styles.map}
-                provider={PROVIDER_GOOGLE}
-                initialRegion={{ ...userLocation, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
-              >
-                <Marker coordinate={userLocation} title="You" />
-                {wearerLocation && <Marker coordinate={wearerLocation} title="Wearer" pinColor="blue" />}
-              </MapView>
-            )}
+          <View style={[styles.mapPlaceholder, { backgroundColor: isDark ? '#1a1a1a' : '#e5e7eb' }]}>
+            <Text style={{ color: theme.textSecondary }}>Map Content Space</Text>
           </View>
         </View>
 
-        {/* 3. RESTORED CONTACTS SECTION */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Emergency Contacts</Text>
-            
-            {/* ADD BUTTON */}
-            <TouchableOpacity 
-              style={styles.addButton} 
-              onPress={() => router.push('/add-contact')} // Links to your add-contact file
-              activeOpacity={0.7}
-            >
-              <Ionicons name="add-circle" size={24} color={theme.brandGold} />
-              <Text style={[styles.addButtonText, { color: theme.brandGold }]}>Add</Text>
-            </TouchableOpacity>
-          </View>
-
-          {contacts.length > 0 ? (
-            contacts.map(contact => (
-              <View key={contact.id} style={[styles.itemCard, { backgroundColor: theme.card }]}>
-                <Text style={{ color: theme.text, fontWeight: '600' }}>{contact.name}</Text>
-                <Text style={{ color: theme.subText }}>{contact.phone}</Text>
-              </View>
-            ))
-          ) : (
-            <Text style={{ color: theme.subText, marginLeft: 0, marginTop: 8 }}>
-              No contacts added.
-            </Text>
-          )}
+        {/* EMERGENCY CONTACTS */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Emergency Contacts</Text>
+          <TouchableOpacity style={[styles.addButton, { backgroundColor: 'rgba(208, 169, 126, 0.15)' }]} onPress={() => router.push('/(tabs)/add-contact')}>
+            <Text style={{ color: theme.brandGold, fontWeight: '700' }}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, padding: 16, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
+          <Text style={[styles.contactName, { color: theme.textPrimary }]}>luke</Text>
+          <Text style={[styles.contactPhone, { color: theme.textSecondary }]}>9931802186</Text>
         </View>
 
-        {/* GUARDIAN SUMMARY SECTION */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Guardian Summary</Text>
-          <View style={[styles.itemCard, { 
-            backgroundColor: theme.card, 
-            borderLeftWidth: 4, 
-            borderLeftColor: latestResponse?.status === 'active' ? '#fb923c' : '#4ade80' 
-          }]}>
-            {latestResponse ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={styles.summaryIconCircle}>
-                  <Text style={{ fontSize: 20 }}>
-                    {latestResponse.currentStatus === 'on_the_way' ? '🚗' : 
-                      latestResponse.currentStatus === 'arrived' ? '📍' : '✅'}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: theme.text, fontWeight: '700' }}>
-                    {latestResponse.lastResponderName || "Waiting for response..."}
-                  </Text>
-                  <Text style={{ color: theme.subText, fontSize: 12 }}>
-                    Status: {latestResponse.currentStatus?.replace('_', ' ') || "No active alerts"}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => router.push('/group')}>
-                  <Ionicons name="chevron-forward" size={20} color={theme.brandGold} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <Text style={{ color: theme.subText }}>No recent guardian activity.</Text>
-            )}
-          </View>
+        {/* GUARDIAN SUMMARY */}
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginTop: 16 }]}>Guardian Summary</Text>
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderLeftWidth: 4, borderLeftColor: '#22c55e', padding: 16, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
+          <Text style={[styles.bodyText, { color: theme.textSecondary }]}>No recent guardian activity.</Text>
         </View>
 
-        {/* 4. RESTORED RECENT ALERTS SECTION */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Alerts</Text>
-          {alerts.map(alert => (
-            <View key={alert.id} style={[styles.itemCard, { backgroundColor: theme.card }]}>
-              <Text style={{ color: theme.text }}>{alert.message}</Text>
-              <Text style={{ color: theme.subText, fontSize: 12 }}>{new Date(alert.timestamp).toLocaleString()}</Text>
-            </View>
-          ))}
+        {/* RECENT ALERTS */}
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginTop: 16 }]}>Recent Alerts</Text>
+        <View style={[styles.card, { backgroundColor: theme.cardBackground, padding: 16, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
+          <Text style={[styles.bodyText, { color: theme.textSecondary }]}>No historical alerts logged.</Text>
         </View>
       </ScrollView>
 
       <QuickBar />
-
-      <PrivacyConsentModal visible={showPrivacy} userId={user?.id ?? ''} onConsent={() => setShowPrivacy(false)} />
-      <SOSModal visible={!!activeAlert} message={activeAlert?.message ?? ''} onDismiss={dismissAlert} />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 },
-  headerTitle: { fontSize: 28, fontWeight: '800' },
-  logoutBtn: { padding: 5 },
-  mapCard: { borderWidth: 1, borderRadius: 12, overflow: 'hidden', margin: 16 },
-  mapContainer: { height: 250, backgroundColor: '#eee' },
-  map: { width: '100%', height: '100%' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 12 },
-  section: { paddingHorizontal: 16, marginBottom: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  itemCard: { padding: 15, borderRadius: 10, marginBottom: 8, flexDirection: 'column' },
-  sectionHeaderRow: {
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 40 : 12,
+    paddingBottom: 12,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconButton: {
+    padding: 8,
+    borderRadius: 12,
+  },
+  scrollPaddingBottom: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 140 : 120, 
+  },
+  card: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
+  },
+  timeText: {
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
+  },
+  healthStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  statBox: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
+  },
+  mapPlaceholder: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
     marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
+    marginBottom: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
   },
   addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4, // Space between icon and text
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  addButtonText: {
-    fontSize: 16,
+  contactName: {
+    fontSize: 16,   
     fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
   },
-  healthCard: { margin: 16, padding: 16, borderRadius: 12, borderWidth: 1 },
-  healthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  healthTitle: { fontSize: 14, fontWeight: '700', textTransform: 'uppercase' },
-  indicatorRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  indicatorItem: { alignItems: 'center' },
-  indicatorVal: { fontSize: 16, fontWeight: '800', marginTop: 4 },
-  indicatorLabel: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
-  quickBar: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 35 : 20, // This lifts it above the iPhone home bar
-    left: 20,
-    right: 20,
-    height: 65,
-    borderRadius: 32.5,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    // Shadow for the floating effect
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+  contactPhone: {
+    fontSize: 14,
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
   },
-  summaryIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  bodyText: {
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
   },
 });
