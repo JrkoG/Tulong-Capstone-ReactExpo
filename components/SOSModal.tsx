@@ -24,39 +24,48 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
 
-  // 🔥 FIX 1: Add the Animation Trigger
-  useEffect(() => {
-    if (visible) {
-      // Vibrate to alert user
-      Vibration.vibrate([0, 500, 200, 500]);
+  // 🔥 FIX 1: Add the Animation Trigger & Continuous Vibration
+useEffect(() => {
+  if (visible) {
+    // 🌟 Pass 'true' as the 2nd argument to repeat the pattern indefinitely
+    Vibration.vibrate([0, 500, 200, 500], true);
 
-      // Start the "Fade In" and "Slide Up" animation
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 400,
-          easing: Easing.out(Easing.back(1)),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      // Reset values when modal is closed
-      fadeAnim.setValue(0);
-      slideAnim.setValue(60);
-    }
-  }, [visible]);
+    // Start the "Fade In" and "Slide Up" animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 400,
+        easing: Easing.out(Easing.back(1)),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  } else {
+    // 🌟 Stop the vibration immediately when the modal becomes hidden
+    Vibration.cancel();
+    
+    // Reset values when modal is closed
+    fadeAnim.setValue(0);
+    slideAnim.setValue(60);
+  }
 
-  const handleOkayPress = () => {
-    onDismiss(); 
-    router.push('/tracker'); 
+  // 🌟 CLEANUP: Stops the vibration if the user closes the app or shifts screens unexpectedly
+  return () => {
+    Vibration.cancel();
   };
+}, [visible]);
 
-  if (!visible) return null;
+const handleOkayPress = () => {
+  Vibration.cancel(); // 🌟 Explicitly stop vibration the millisecond they tap OK
+  onDismiss(); 
+  router.push('/tracker'); 
+};
+
+if (!visible) return null;
 
   return (
     <Modal visible={visible} transparent animationType="none">
