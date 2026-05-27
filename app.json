@@ -11,7 +11,8 @@
     "ios": {
       "supportsTablet": true,
       "config": {
-        "googleMapsApiKey": "AIzaSyAHjrWuK1uyXEJ40drMPzqiwItVtCYaKzw"
+        "googleMapsApiKey": "AIzaSyAHjrWuK1uyXEJ40drMPzqiwItVtCYaKzw",
+        "googleServicesFile": "./GoogleService-Info.plist",
       },
       "infoPlist": {
         "UIBackgroundModes": ["location", "fetch", "remote-notification"],

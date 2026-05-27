@@ -13,12 +13,31 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import QuickBar from '../../components/QuickBar';
 
+// Official Google Maps Dark Theme JSON Array
+const darkMapStyle = [
+  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3f4f6" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2f3948" }] },
+  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] }
+];
+
 export default function TrackerScreen() {
-  const router = useRouter(); // Required for quickbar navigation
-  const isDark = useColorScheme() === 'dark'; // Required for dynamic styling
+  const router = useRouter(); 
+  const isDark = useColorScheme() === 'dark'; 
   const pathname = usePathname();
   
-  // Define theme colors to match your other screens
   const theme = {
     background: isDark ? '#000' : '#fff',
     text: isDark ? '#fff' : '#111',
@@ -96,6 +115,8 @@ export default function TrackerScreen() {
       <MapView
         style={styles.map}
         provider={PROVIDER_GOOGLE}
+        // Dynamically applies dark skin styling array if system is set to dark theme
+        customMapStyle={isDark ? darkMapStyle : []}
         initialRegion={{
           latitude: location.latitude,
           longitude: location.longitude,
@@ -132,7 +153,7 @@ const styles = StyleSheet.create({
   tabItem: { alignItems: 'center', justifyContent: 'center' },
   quickBar: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 35 : 20, // Lifted for iPhone home bar
+    bottom: Platform.OS === 'ios' ? 35 : 20, 
     left: 20,
     right: 20,
     height: 65,

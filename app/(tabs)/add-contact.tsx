@@ -12,8 +12,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  useColorScheme,
-  View
+  View,
+  useColorScheme
 } from 'react-native';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/authContext';
@@ -24,7 +24,11 @@ const RELATIONS = ['Parent', 'Sibling', 'Spouse', 'Friend', 'Other'];
 export default function AddContactScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const isDark = useColorScheme() === 'dark';
+
+  
+  // SMART THEME: Automatically follows system settings
+  const systemColorScheme = useColorScheme();
+  const isDark = systemColorScheme === 'dark';
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -32,6 +36,7 @@ export default function AddContactScreen() {
   const [otherRelation, setOtherRelation] = useState(''); // Stores custom input
   const [loading, setLoading] = useState(false);
 
+  // DYNAMIC THEME TOKENS
   const theme = {
     background: isDark ? '#000000' : '#FFFFFF',
     text: isDark ? '#FFFFFF' : '#111',
@@ -44,17 +49,19 @@ export default function AddContactScreen() {
     // Determine the final value to save
     const finalRelationship = relationship === 'Other' ? otherRelation : relationship;
 
-    if (!name || !phone || !finalRelationship) {
+     if (!name || !phone || !finalRelationship) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    if (!user?.id) {
-      Alert.alert('Error', 'User not authenticated');
+     if (!user?.id) {
+      Alert.alert('Error', 'User not authenticated'); 
       return;
     }
 
-    setLoading(true);
+  const relationshipOptions = ['Parent', 'Sibling', 'Spouse', 'Friend', 'Other'];
+
+  setLoading(true);
     try {
       await addDoc(collection(db, 'users', user.id, 'contacts'), {
         name,
@@ -74,13 +81,16 @@ export default function AddContactScreen() {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={28} color={theme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Add Contact</Text>
-        <View style={{ width: 28 }} /> 
+        <View style={{ width: 28 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.form}>
@@ -138,21 +148,24 @@ export default function AddContactScreen() {
               placeholder="e.g. Cousin"
               placeholderTextColor="#666"
               autoFocus
-            />
-          </View>
-        )}
+            /> 
+      </View>
+      )}
 
         <TouchableOpacity 
           style={[styles.saveBtn, { backgroundColor: theme.brandGold }]} 
           onPress={handleSave}
           disabled={loading}
+
         >
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Contact</Text>}
         </TouchableOpacity>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -167,4 +180,4 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 14, fontWeight: '600' },
   saveBtn: { height: 56, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 40 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' }
-});
+  });
