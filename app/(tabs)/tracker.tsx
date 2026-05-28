@@ -86,18 +86,6 @@ export default function TrackerScreen() {
     return () => subscription?.remove();
   }, []);
 
-  // 2. HARD-CODED WEARER LOCATION (MOCK DATA)
-  useEffect(() => {
-    const mockLat = 14.4589; 
-    const mockLng = 120.9603;
-
-    setWearerLocation({
-      latitude: mockLat,
-      longitude: mockLng,
-    });
-    setActive(true);
-  }, []);
-
   if (loading || !location) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>

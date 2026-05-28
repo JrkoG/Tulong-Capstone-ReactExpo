@@ -22,7 +22,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Tulong App 🚨</Text>
+      <Text style={styles.title}>C.A.R.E </Text>
       <Text style={[styles.status, { color: connected ? "#4ade80" : "#f87171" }]}>
         Firebase: {connected ? "✅ Connected" : "❌ Connecting..."}
       </Text>

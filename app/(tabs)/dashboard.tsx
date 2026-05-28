@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { Stack, usePathname, useRouter } from 'expo-router';
-import { onValue, ref } from "firebase/database";
+import { onValue, ref, push, update } from "firebase/database"; 
 import { collection, query as fsQuery, getDocs, onSnapshot, where } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Platform,
   ScrollView,
   StatusBar,
@@ -24,10 +25,10 @@ import { useAuth } from '../../context/authContext';
 import { useAlertListener } from '../../hooks/useAlertListener';
 
 type Contact = { id: string; name: string; phone: string; };
-type AlertLog = { id: string; message: string; timestamp: any; pushNotified?: boolean; };
+// 🌟 Updated: Explicitly type latitude and longitude options into the logs
+type AlertLog = { id: string; message: string; timestamp: any; pushNotified?: boolean; latitude?: number; longitude?: number; };
 type DeviceLocation = { latitude: number; longitude: number; } | null;
 
-// Global settings for handling notifications
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -36,7 +37,6 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// 🌟 THE NOTIFICATION FUNCTION IS RIGHT HERE INSIDE THE FILE NOW!
 const sendGroupPushNotification = async (groupId: string) => {
   try {
     const usersRef = collection(db, 'users');
@@ -60,7 +60,7 @@ const sendGroupPushNotification = async (groupId: string) => {
           token: token,
           notification: {
             title: "🚨 EMERGENCY ALERT!",
-            body: "The hardware wearable device has triggered a physical SOS button!"
+            body: "An SOS panic alert has been triggered!"
           },
           android: {
             priority: "high",
@@ -100,6 +100,9 @@ export default function DashboardScreen() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  
+  const [currentModalAlert, setCurrentModalAlert] = useState<AlertLog | null>(null);
 
   const HARDCODED_GROUP_ID = "qwi4UVJBinray0ZQm95e";
 
@@ -112,7 +115,45 @@ export default function DashboardScreen() {
     brandGold: '#D0A97E',
   };
 
-  // Live Location Tracker for Guardian's Smartphone
+  const handleManualSOS = () => {
+  Alert.alert(
+    "Confirm Emergency",
+    "Are you sure you want to broadcast a manual SOS to the entire group?",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "TRIGGER",
+        style: "destructive",
+        onPress: async () => {
+          if (isSending) return;
+          setIsSending(true);
+          try {
+            const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
+            
+            // 🌟 UPDATED: Force null here so it simulates having no IoT GPS data
+            await push(alertsRef, {
+              message: `Manual App SOS triggered by ${user?.email || 'Guardian'}`,
+              timestamp: Date.now(),
+              pushNotified: false,
+              latitude: null,  // 👈 Changed from userLocation?.latitude
+              longitude: null  // 👈 Changed from userLocation?.longitude
+            });
+            
+            Alert.alert("Success", "Emergency broadcast sent successfully!");
+          } catch (error) {
+            console.error("Failed to append RTDB Alert node:", error);
+            Alert.alert("Error", "Failed to connect to database server.");
+          } finally {
+            setIsSending(false);
+          }
+        }
+      }
+    ]
+  );
+};
+              
+
+
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -126,7 +167,6 @@ export default function DashboardScreen() {
     })();
   }, []);
 
-  // Telemetry updates from hardware wearable
   useEffect(() => {
     const trackingRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/tracking`); 
     return onValue(trackingRef, (snapshot) => {
@@ -148,7 +188,6 @@ export default function DashboardScreen() {
     });
   }, []);
 
-  // Watch for active database hardware alert changes
   useEffect(() => {
     const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
     return onValue(alertsRef, (snapshot) => {
@@ -157,10 +196,14 @@ export default function DashboardScreen() {
         const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
         const latestAlert = list[list.length - 1] as AlertLog;
         
+        const threeMinutesAgo = Date.now() - 3 * 60 * 1000;
+        if (latestAlert && latestAlert.timestamp > threeMinutesAgo) {
+          setCurrentModalAlert(latestAlert);
+        }
+        
         if (latestAlert && !latestAlert.pushNotified) {
-          // Triggers the local inline function perfectly!
           sendGroupPushNotification(HARDCODED_GROUP_ID);
-          ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts/${latestAlert.id}`).update({ pushNotified: true });
+          update(ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts/${latestAlert.id}`), { pushNotified: true });
         }
 
         setAlerts(list.reverse().slice(0, 5) as AlertLog[]);
@@ -168,7 +211,6 @@ export default function DashboardScreen() {
     });
   }, []);
 
-  // Contacts snapshot mapping
   useEffect(() => {
     if (!user?.id) return;
     return onSnapshot(collection(db, 'users', user.id, 'contacts'), (snap) => {
@@ -191,7 +233,7 @@ export default function DashboardScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={[styles.healthCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.healthHeader}>
-            <Text style={[styles.healthTitle, { color: theme.text }]}>Wearable Health</Text>
+            <Text style={[styles.healthTitle, { color: theme.text }]}>Wearable Sta
             <Text style={{ color: theme.subText, fontSize: 10 }}>Last synced: {deviceStatus.lastSeen}</Text>
           </View>
           
@@ -212,6 +254,20 @@ export default function DashboardScreen() {
               <Text style={styles.indicatorLabel}>Signal</Text>
             </View>
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <TouchableOpacity 
+            style={[styles.sosButton, isSending && { opacity: 0.6 }]} 
+            onPress={handleManualSOS}
+            disabled={isSending}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="alert-circle" size={26} color="#fff" />
+            <Text style={styles.sosButtonText}>
+              {isSending ? "SENDING SOS..." : "TRIGGER APP SOS ALERT"}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.mapCard, { borderColor: theme.border }]}>
@@ -281,7 +337,18 @@ export default function DashboardScreen() {
       <QuickBar />
 
       <PrivacyConsentModal visible={showPrivacy} userId={user?.id ?? ''} onConsent={() => setShowPrivacy(false)} />
-      <SOSModal visible={!!activeAlert} message={activeAlert?.message ?? ''} onDismiss={dismissAlert} />
+      
+      {/* 🌟 UPDATED: Restructures incoming database properties safely into the location object format */}
+      <SOSModal 
+        visible={!!currentModalAlert} 
+        message={currentModalAlert?.message ?? ''} 
+        timestamp={currentModalAlert?.timestamp}
+        location={currentModalAlert?.latitude && currentModalAlert?.longitude ? {
+          latitude: currentModalAlert.latitude,
+          longitude: currentModalAlert.longitude
+        } : undefined}
+        onDismiss={() => setCurrentModalAlert(null)} 
+      />
     </View>
   );
 }
@@ -309,4 +376,19 @@ const styles = StyleSheet.create({
   indicatorItem: { alignItems: 'center' },
   indicatorVal: { fontSize: 16, fontWeight: '800', marginTop: 4 },
   indicatorLabel: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
+  sosButton: {
+    backgroundColor: '#ef4444',
+    paddingVertical: 16,
+    borderRadius: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  sosButtonText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
 });
