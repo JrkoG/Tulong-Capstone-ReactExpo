@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { Stack, usePathname, useRouter } from 'expo-router';
-import { onValue, ref, push, update } from "firebase/database"; 
+// 🌟 UPDATED: Added 'set' to handle publishing your location to the group database path
+import { onValue, push, ref, set, update } from "firebase/database";
 import { collection, query as fsQuery, getDocs, onSnapshot, where } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -25,9 +26,17 @@ import { useAuth } from '../../context/authContext';
 import { useAlertListener } from '../../hooks/useAlertListener';
 
 type Contact = { id: string; name: string; phone: string; };
-// 🌟 Updated: Explicitly type latitude and longitude options into the logs
 type AlertLog = { id: string; message: string; timestamp: any; pushNotified?: boolean; latitude?: number; longitude?: number; };
 type DeviceLocation = { latitude: number; longitude: number; } | null;
+
+// 🌟 NEW: Define the Group Member structural layout type
+type GroupMember = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  lastUpdated: number;
+};
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -97,6 +106,10 @@ export default function DashboardScreen() {
 
   const [userLocation, setUserLocation] = useState<DeviceLocation>(null);
   const [wearerLocation, setWearerLocation] = useState<DeviceLocation>(null);
+  
+  // 🌟 NEW: Track array state for your circle group members inside dashboard
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -116,56 +129,94 @@ export default function DashboardScreen() {
   };
 
   const handleManualSOS = () => {
-  Alert.alert(
-    "Confirm Emergency",
-    "Are you sure you want to broadcast a manual SOS to the entire group?",
-    [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "TRIGGER",
-        style: "destructive",
-        onPress: async () => {
-          if (isSending) return;
-          setIsSending(true);
-          try {
-            const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
-            
-            // 🌟 UPDATED: Force null here so it simulates having no IoT GPS data
-            await push(alertsRef, {
-              message: `Manual App SOS triggered by ${user?.email || 'Guardian'}`,
-              timestamp: Date.now(),
-              pushNotified: false,
-              latitude: null,  // 👈 Changed from userLocation?.latitude
-              longitude: null  // 👈 Changed from userLocation?.longitude
-            });
-            
-            Alert.alert("Success", "Emergency broadcast sent successfully!");
-          } catch (error) {
-            console.error("Failed to append RTDB Alert node:", error);
-            Alert.alert("Error", "Failed to connect to database server.");
-          } finally {
-            setIsSending(false);
+    Alert.alert(
+      "Confirm Emergency",
+      "Are you sure you want to broadcast a manual SOS to the entire group?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "TRIGGER",
+          style: "destructive",
+          onPress: async () => {
+            if (isSending) return;
+            setIsSending(true);
+            try {
+              const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
+              
+              await push(alertsRef, {
+                message: `Manual App SOS triggered by ${user?.email || 'Guardian'}`,
+                timestamp: Date.now(),
+                pushNotified: false,
+                latitude: null, // Forces "Unknown" profile testing wrapper
+                longitude: null
+              });
+              
+              Alert.alert("Success", "Emergency broadcast sent successfully!");
+            } catch (error) {
+              console.error("Failed to append RTDB Alert node:", error);
+              Alert.alert("Error", "Failed to connect to database server.");
+            } finally {
+              setIsSending(false);
+            }
           }
         }
-      }
-    ]
-  );
-};
-              
+      ]
+    );
+  };
 
-
+  // 🛰️ JOB 1: Upgraded to track YOUR phone location continuously & broadcast it up to the group
   useEffect(() => {
+    if (!user?.id) return;
+    let locationSubscription: Location.LocationSubscription | null = null;
+
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
 
-      let location = await Location.getCurrentPositionAsync({});
-      setUserLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
+      locationSubscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 10000, // Sync every 10 seconds
+          distanceInterval: 10, // Or every 10 meters change
+        },
+        (location) => {
+          const { latitude, longitude } = location.coords;
+          setUserLocation({ latitude, longitude });
+
+          // Stream coordinates to the shared member path
+          const myLocationRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members/${user.id}`);
+          set(myLocationRef, {
+            name: user.email?.split('@')[0] || "Group Member",
+            latitude,
+            longitude,
+            lastUpdated: Date.now(),
+          });
+        }
+      );
     })();
-  }, []);
+
+    return () => {
+      if (locationSubscription) locationSubscription.remove();
+    };
+  }, [user?.id]);
+
+  // 📡 JOB 2: Listen to ALL other Group Members live changes simultaneously
+  useEffect(() => {
+    const membersRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members`);
+    
+    return onValue(membersRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const membersList = Object.keys(data)
+          .filter(key => key !== user?.id) // Don't track yourself twice
+          .map(key => ({ id: key, ...data[key] })) as GroupMember[];
+          
+        setGroupMembers(membersList);
+      } else {
+        setGroupMembers([]);
+      }
+    });
+  }, [user?.id]);
 
   useEffect(() => {
     const trackingRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/tracking`); 
@@ -233,7 +284,7 @@ export default function DashboardScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={[styles.healthCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.healthHeader}>
-            <Text style={[styles.healthTitle, { color: theme.text }]}>Wearable Sta
+            <Text style={[styles.healthTitle, { color: theme.text }]}>Wearable Status</Text>
             <Text style={{ color: theme.subText, fontSize: 10 }}>Last synced: {deviceStatus.lastSeen}</Text>
           </View>
           
@@ -291,8 +342,21 @@ export default function DashboardScreen() {
                 provider={PROVIDER_GOOGLE}
                 initialRegion={{ ...userLocation, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
               >
-                <Marker coordinate={userLocation} title="You" />
+                {/* 🟢 Marker 1: You */}
+                <Marker coordinate={userLocation} title="You" pinColor="green" />
+                
+                {/* 🔵 Marker 2: Wearer Hardware Device */}
                 {wearerLocation && <Marker coordinate={wearerLocation} title="Wearer Device" pinColor="blue" />}
+                
+                {/* 👥 Markers 3+: All Other Live Circle Members on the Main Map */}
+                {groupMembers.map((member) => (
+                  <Marker
+                    key={member.id}
+                    coordinate={{ latitude: member.latitude, longitude: member.longitude }}
+                    title={member.name}
+                    pinColor="orange"
+                  />
+                ))}
               </MapView>
             ) : (
               <View style={styles.loadingMap}><Text style={{color: theme.subText}}>Acquiring GPS Fix...</Text></View>
@@ -338,7 +402,6 @@ export default function DashboardScreen() {
 
       <PrivacyConsentModal visible={showPrivacy} userId={user?.id ?? ''} onConsent={() => setShowPrivacy(false)} />
       
-      {/* 🌟 UPDATED: Restructures incoming database properties safely into the location object format */}
       <SOSModal 
         visible={!!currentModalAlert} 
         message={currentModalAlert?.message ?? ''} 
