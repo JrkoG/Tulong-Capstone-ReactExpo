@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { Stack, usePathname, useRouter } from 'expo-router';
-// 🌟 UPDATED: Added 'set' to handle publishing your location to the group database path
 import { onValue, push, ref, set, update } from "firebase/database";
 import { collection, query as fsQuery, getDocs, onSnapshot, where } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
@@ -29,7 +28,6 @@ type Contact = { id: string; name: string; phone: string; };
 type AlertLog = { id: string; message: string; timestamp: any; pushNotified?: boolean; latitude?: number; longitude?: number; };
 type DeviceLocation = { latitude: number; longitude: number; } | null;
 
-// 🌟 NEW: Define the Group Member structural layout type
 type GroupMember = {
   id: string;
   name: string;
@@ -107,9 +105,7 @@ export default function DashboardScreen() {
   const [userLocation, setUserLocation] = useState<DeviceLocation>(null);
   const [wearerLocation, setWearerLocation] = useState<DeviceLocation>(null);
   
-  // 🌟 NEW: Track array state for your circle group members inside dashboard
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
-  
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -147,7 +143,7 @@ export default function DashboardScreen() {
                 message: `Manual App SOS triggered by ${user?.email || 'Guardian'}`,
                 timestamp: Date.now(),
                 pushNotified: false,
-                latitude: null, // Forces "Unknown" profile testing wrapper
+                latitude: null, 
                 longitude: null
               });
               
@@ -164,7 +160,7 @@ export default function DashboardScreen() {
     );
   };
 
-  // 🛰️ JOB 1: Upgraded to track YOUR phone location continuously & broadcast it up to the group
+  // 🛰️ JOB 1: Continuous Mobile Phone Location Tracker
   useEffect(() => {
     if (!user?.id) return;
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -176,14 +172,13 @@ export default function DashboardScreen() {
       locationSubscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 10000, // Sync every 10 seconds
-          distanceInterval: 10, // Or every 10 meters change
+          timeInterval: 10000, 
+          distanceInterval: 10, 
         },
         (location) => {
           const { latitude, longitude } = location.coords;
           setUserLocation({ latitude, longitude });
 
-          // Stream coordinates to the shared member path
           const myLocationRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members/${user.id}`);
           set(myLocationRef, {
             name: user.email?.split('@')[0] || "Group Member",
@@ -200,7 +195,7 @@ export default function DashboardScreen() {
     };
   }, [user?.id]);
 
-  // 📡 JOB 2: Listen to ALL other Group Members live changes simultaneously
+  // 📡 JOB 2: Listen to Circle Members Live Status Feed
   useEffect(() => {
     const membersRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members`);
     
@@ -208,7 +203,7 @@ export default function DashboardScreen() {
       if (snapshot.exists()) {
         const data = snapshot.val();
         const membersList = Object.keys(data)
-          .filter(key => key !== user?.id) // Don't track yourself twice
+          .filter(key => key !== user?.id) 
           .map(key => ({ id: key, ...data[key] })) as GroupMember[];
           
         setGroupMembers(membersList);
@@ -218,15 +213,16 @@ export default function DashboardScreen() {
     });
   }, [user?.id]);
 
+  // 🛰️ JOB 3: Listen to Continuous Wearable Device Path (Live Tracking Loop)
   useEffect(() => {
     const trackingRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/tracking`); 
     return onValue(trackingRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
         setDeviceStatus({
-          battery: data.batteryLevel || 0,
+          battery: data.batteryLevel || 100, 
           signal: 'Strong',
-          lastSeen: data.lastUpdated ? new Date(data.lastUpdated).toLocaleTimeString() : 'Just now'
+          lastSeen: data.lastUpdated || data.serverTime ? new Date(data.lastUpdated || data.serverTime).toLocaleTimeString() : 'Just now'
         });
 
         if (data.latitude && data.longitude) {
@@ -239,16 +235,34 @@ export default function DashboardScreen() {
     });
   }, []);
 
+  // 🚨 JOB 4: Upgraded Alerts and SOS Tracker Mapping Listener
   useEffect(() => {
     const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
     return onValue(alertsRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-        const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        
+        // Map elements out into an indexable array structure seamlessly
+        const list = Object.keys(data).map(key => {
+          const item = data[key];
+          return {
+            id: key,
+            message: item.message || (item.reason === "button" ? "Hardware Emergency Button Pressed!" : item.reason) || "SOS Emergency Triggered",
+            timestamp: item.timestamp || item.serverTime || Date.now(),
+            pushNotified: item.pushNotified || false,
+            // 🎯 Fallback check handles both .latitude and .lat key layouts seamlessly
+            latitude: item.latitude !== undefined ? item.latitude : item.lat,
+            longitude: item.longitude !== undefined ? item.longitude : item.lng,
+          };
+        });
+        
         const latestAlert = list[list.length - 1] as AlertLog;
         
+        // Show modal popup window if data entry happened within the last 3 minutes
         const threeMinutesAgo = Date.now() - 3 * 60 * 1000;
-        if (latestAlert && latestAlert.timestamp > threeMinutesAgo) {
+        const alertTime = typeof latestAlert.timestamp === 'number' ? latestAlert.timestamp : Date.now();
+        
+        if (latestAlert && alertTime > threeMinutesAgo) {
           setCurrentModalAlert(latestAlert);
         }
         
@@ -257,11 +271,12 @@ export default function DashboardScreen() {
           update(ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts/${latestAlert.id}`), { pushNotified: true });
         }
 
-        setAlerts(list.reverse().slice(0, 5) as AlertLog[]);
+        setAlerts([...list].reverse().slice(0, 5) as AlertLog[]);
       }
     });
   }, []);
 
+  // 👥 JOB 5: Emergency Contacts Listener
   useEffect(() => {
     if (!user?.id) return;
     return onSnapshot(collection(db, 'users', user.id, 'contacts'), (snap) => {
@@ -342,13 +357,8 @@ export default function DashboardScreen() {
                 provider={PROVIDER_GOOGLE}
                 initialRegion={{ ...userLocation, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
               >
-                {/* 🟢 Marker 1: You */}
                 <Marker coordinate={userLocation} title="You" pinColor="green" />
-                
-                {/* 🔵 Marker 2: Wearer Hardware Device */}
                 {wearerLocation && <Marker coordinate={wearerLocation} title="Wearer Device" pinColor="blue" />}
-                
-                {/* 👥 Markers 3+: All Other Live Circle Members on the Main Map */}
                 {groupMembers.map((member) => (
                   <Marker
                     key={member.id}

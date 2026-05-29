@@ -78,6 +78,10 @@ export default function GroupScreen() {
     danger: '#f87171',
   };
 
+  const alertButtonPaddingBottom = Platform.OS === 'android' ? 220 : 140;
+  const renderAlertButtonInScroll = Platform.OS === 'android';
+  const renderAlertButtonAtBottom = Platform.OS === 'ios';
+
   // State
   const [loading, setLoading] = useState(true);
   const [group, setGroup] = useState<Group | null>(null);
@@ -342,7 +346,7 @@ export default function GroupScreen() {
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: alertButtonPaddingBottom }]}>
         {!group ? (
           // --- SETUP UI ---
           <View style={styles.noGroupContainer}>
@@ -454,23 +458,20 @@ export default function GroupScreen() {
             </View>
           </View>
         )}
+        {activeAlert && renderAlertButtonInScroll && (
+          <View style={styles.alertButtonRelativeContainer}>
+            <TouchableOpacity style={styles.alertButton} onPress={() => setShowActionSheet(true)}>
+              <Text style={styles.alertButtonText}>I'm Responding to Alert</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* 1. The Red Emergency Button (Only visible during active alert) */}
-      {activeAlert && (
-        <View style={{ padding: 20, paddingBottom: 0 }}>
-          <TouchableOpacity 
-            style={{
-              backgroundColor: '#ef4444',
-              padding: 16,
-              borderRadius: 12,
-              alignItems: 'center'
-            }}
-            onPress={() => setShowActionSheet(true)}
-          >
-            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>
-              I'm Responding to Alert
-            </Text>
+      {activeAlert && renderAlertButtonAtBottom && (
+        <View style={styles.alertButtonContainer}>
+          <TouchableOpacity style={styles.alertButton} onPress={() => setShowActionSheet(true)}>
+            <Text style={styles.alertButtonText}>I'm Responding to Alert</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -511,6 +512,28 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', padding: 16 },
   memberRow: { flexDirection: 'row', alignItems: 'center', padding: 16, borderTopWidth: 1 },
   memberName: { fontSize: 16, fontWeight: '600' },
+  alertButtonContainer: {
+      position: 'absolute',
+      left: 20,
+      right: 20,
+      bottom: Platform.OS === 'ios' ? 110 : 20,
+      zIndex: 10,
+    },
+    alertButtonRelativeContainer: {
+      padding: 20,
+      paddingBottom: 0,
+    },
+    alertButton: {
+      backgroundColor: '#ef4444',
+      padding: 16,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    alertButtonText: {
+      color: 'white',
+      fontWeight: 'bold',
+      fontSize: 16,
+    },
   quickBar: {
       position: 'absolute',
       bottom: Platform.OS === 'ios' ? 35 : 20, // This lifts it above the iPhone home bar
