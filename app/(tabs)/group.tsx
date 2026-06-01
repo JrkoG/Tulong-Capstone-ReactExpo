@@ -256,22 +256,44 @@ export default function GroupScreen() {
     locationWatcher.current = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 5000, // Update location calculation every 5 seconds
-        distanceInterval: 5, // Recalculate distance every 5 meters moved
+        timeInterval: 2000, // Update location calculation every 2 seconds
+        distanceInterval: 1, // Recalculate distance every 1 meter moved
       },
-      (newLoc) => {
+      async (newLoc) => {
+        const accuracy = newLoc.coords.accuracy ?? 999;
+
+        // Ignore very poor GPS fixes
+        if (accuracy > 50) {
+          console.log(`Skipping inaccurate reading (${accuracy.toFixed(0)}m)`);
+          return;
+        }
+
         const coords = {
           latitude: newLoc.coords.latitude,
           longitude: newLoc.coords.longitude,
         };
-        updateDoc(doc(db, "groups", groupId, "members", user.id), {
-          location: coords,
-          lastSeen: serverTimestamp(),
-        }).catch((e) => console.log("Location update error", e));
+
+        console.log("Guardian Location:", {
+          ...coords,
+          accuracy,
+          speed: newLoc.coords.speed,
+          heading: newLoc.coords.heading,
+        });
+
+        try {
+          await updateDoc(doc(db, "groups", groupId, "members", user.id), {
+            location: coords,
+            accuracy,
+            speed: newLoc.coords.speed ?? 0,
+            heading: newLoc.coords.heading ?? 0,
+            lastSeen: serverTimestamp(),
+          });
+        } catch (e) {
+          console.log("Location update error", e);
+        }
       },
     );
   };
-
   // --- Actions ---
   const handleCreateGroup = async () => {
     if (!groupName || !wearerName || !user?.id) {
@@ -363,7 +385,8 @@ export default function GroupScreen() {
 
   // 🎯 COMPUTATION ENGINE: Evaluates real-time distance separation metrics
   const getDistanceText = (member: GroupMember): string => {
-    if (!wearerLocation || !member.location) return "— km";
+    if (!wearerLocation) return "Waiting GPS...";
+    if (!member.location) return "Locating...";
 
     const km = getDistanceKm(
       wearerLocation.latitude,

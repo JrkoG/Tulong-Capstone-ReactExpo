@@ -77,6 +77,9 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
           await update(myLocationRef, {
             latitude,
             longitude,
+            accuracy: location.coords.accuracy ?? 999,
+            speed: location.coords.speed ?? 0,
+            heading: location.coords.heading ?? 0,
             lastUpdated: Date.now(),
           });
         }
@@ -244,10 +247,19 @@ export default function DashboardScreen() {
       locationSubscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation, // 🔥 Upgrade choice from High to bypass cellular approximation
-          timeInterval: 5000, // Sync every 5 seconds for pinpoint refresh latency
-          distanceInterval: 5, // React immediately if guardian moves past 5 meters
+          timeInterval: 2000, // Sync every 2 seconds for pinpoint refresh latency
+          distanceInterval: 1, // React immediately if guardian moves past 1 meter
         },
         (location) => {
+          const accuracy = location.coords.accuracy ?? 999;
+
+          // Ignore bad GPS fixes
+          if (accuracy > 50) {
+            console.log(
+              `Skipping inaccurate location (${accuracy.toFixed(0)}m)`,
+            );
+            return;
+          }
           const { latitude, longitude } = location.coords;
           setUserLocation({ latitude, longitude });
 
