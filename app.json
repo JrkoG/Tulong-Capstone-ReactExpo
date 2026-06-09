@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "CARE-app",
-    "slug": "CARE-app",
+    "slug": "tulong-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,6 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "bundleIdentifier": "com.tulong.app",
       "supportsTablet": true,
       "config": {
         "googleMapsApiKey": "AIzaSyAHjrWuK1uyXEJ40drMPzqiwItVtCYaKzw",
@@ -54,6 +55,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-task-manager",
       [
         "expo-splash-screen",
         {
@@ -78,7 +80,8 @@
           "locationAlwaysAndWhenInUsePermission": "CARE-app needs your location to alert your contacts when you press the SOS button.",
           "locationAlwaysPermission": "CARE-app needs background location to track your position during emergencies.",
           "locationWhenInUsePermission": "CARE-app needs your location to send it to your emergency contacts.",
-          "isAndroidBackgroundLocationEnabled": true
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-font"

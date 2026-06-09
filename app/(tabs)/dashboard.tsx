@@ -1,16 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
-import { Stack, usePathname, useRouter } from "expo-router";
-import * as TaskManager from "expo-task-manager"; // 🛰️ Added for background execution
+import { Stack, useRouter } from "expo-router";
+import * as TaskManager from "expo-task-manager";
 import { onValue, push, ref, set, update } from "firebase/database";
-import {
-  collection,
-  query as fsQuery,
-  getDocs,
-  onSnapshot,
-  where,
-} from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -27,10 +21,11 @@ import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import PrivacyConsentModal from "../../components/PrivacyConsentModal";
 import QuickBar from "../../components/QuickBar";
 import SOSModal from "../../components/SOSModal";
-import { db, rtdb } from "../../config/firebase";
+import { auth, db, rtdb } from "../../config/firebase";
 import { useAuth } from "../../context/authContext";
 import { useAlertListener } from "../../hooks/useAlertListener";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 type Contact = { id: string; name: string; phone: string };
 type AlertLog = {
   id: string;
@@ -41,7 +36,6 @@ type AlertLog = {
   longitude?: number;
 };
 type DeviceLocation = { latitude: number; longitude: number } | null;
-
 type GroupMember = {
   id: string;
   name: string;
@@ -50,10 +44,14 @@ type GroupMember = {
   lastUpdated: number;
 };
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 const LOCATION_TASK_NAME = "background-location-task";
 const HARDCODED_GROUP_ID = "qwi4UVJBinray0ZQm95e";
+const STALE_THRESHOLD_MS = 5 * 60 * 1000;
+const MEMBER_COLORS = ["#4ade80", "#60a5fa", "#f472b6", "#a78bfa", "#fb923c"];
 
-// 🌍 ROOT LEVEL TASK: Keeps running even if the Guardian closes the app UI completely
+// ─── Background Task ──────────────────────────────────────────────────────────
+// Keeps broadcasting location even when the app is minimized
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
     console.error("Background Location Error:", error);
@@ -64,15 +62,13 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     const location = locations[0];
     if (location) {
       const { latitude, longitude } = location.coords;
-
-      // We read the global active user footprint to ensure we update the correct node dynamically
       try {
-        // Fallback to fetch current authentication status to identify background updates safely
-        const userJson = auth().currentUser;
-        if (userJson?.uid) {
+        // FIX: auth is a Firebase instance, not a function — auth.currentUser not auth()
+        const currentUser = auth.currentUser;
+        if (currentUser?.uid) {
           const myLocationRef = ref(
             rtdb,
-            `groups/${HARDCODED_GROUP_ID}/members/${userJson.uid}`,
+            `groups/${HARDCODED_GROUP_ID}/members/${currentUser.uid}`,
           );
           await update(myLocationRef, {
             latitude,
@@ -84,12 +80,13 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
           });
         }
       } catch (dbErr) {
-        // Silently capture if execution context scope alters during raw system threads
+        // Silently ignore errors in background thread context
       }
     }
   }
 });
 
+// ─── Notifications ────────────────────────────────────────────────────────────
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -98,61 +95,87 @@ Notifications.setNotificationHandler({
   }),
 });
 
-const sendGroupPushNotification = async (groupId: string) => {
-  try {
-    const usersRef = collection(db, "users");
-    const q = fsQuery(usersRef, where("groupId", "==", groupId));
-    const querySnapshot = await getDocs(q);
+// ─── Custom Map Markers ───────────────────────────────────────────────────────
 
-    const tokens: string[] = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.expoPushToken) tokens.push(data.expoPushToken);
-    });
+// Blue dot for current user — matches Google Maps style
+function YouMarker() {
+  return (
+    <View style={markerStyles.youOuter}>
+      <View style={markerStyles.youInner} />
+    </View>
+  );
+}
 
-    if (tokens.length === 0) return;
+// Gold icon for the IoT wearer device
+function WearerMarker() {
+  return (
+    <View style={[markerStyles.circle, { backgroundColor: "#D0A97E" }]}>
+      <Ionicons name="watch-outline" size={13} color="#fff" />
+    </View>
+  );
+}
 
-    const PROJECT_ID = "tulong-app-c7aaa";
-    const fcmUrl = `https://fcm.googleapis.com/v1/projects/${PROJECT_ID}/messages:send`;
+// Avatar initial marker — grayed out when stale
+function MemberMarker({
+  name,
+  color,
+  isStale,
+}: {
+  name: string;
+  color: string;
+  isStale: boolean;
+}) {
+  return (
+    <View
+      style={[
+        markerStyles.circle,
+        { backgroundColor: isStale ? "#888" : color, opacity: isStale ? 0.5 : 1 },
+      ]}
+    >
+      <Text style={markerStyles.initial}>{name.charAt(0).toUpperCase()}</Text>
+    </View>
+  );
+}
 
-    for (const token of tokens) {
-      const payload = {
-        message: {
-          token: token,
-          notification: {
-            title: "🚨 EMERGENCY ALERT!",
-            body: "An SOS panic alert has been triggered!",
-          },
-          android: {
-            priority: "high",
-            notification: {
-              sound: "default",
-              vibrate_timings: ["0s", "0.5s", "0.2s", "0.5s"],
-            },
-          },
-          apns: { payload: { aps: { sound: "default", badge: 1 } } },
-        },
-      };
+const markerStyles = StyleSheet.create({
+  circle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  initial: { color: "#fff", fontWeight: "800", fontSize: 12 },
+  youOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(66, 133, 244, 0.25)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#4285F4",
+  },
+  youInner: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: "#4285F4",
+  },
+});
 
-      await fetch(fcmUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `key=AIzaSyDeoWrGJvxiLRHhzs8UAesddd6i2iWAp50`,
-        },
-        body: JSON.stringify(payload),
-      });
-    }
-  } catch (err) {
-    console.error("FCM Send Error: ", err);
-  }
-};
-
+// ─── Screen ───────────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const { logout, user } = useAuth();
   const { activeAlert, dismissAlert } = useAlertListener(user?.id);
   const router = useRouter();
-  const pathname = usePathname();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
@@ -164,17 +187,17 @@ export default function DashboardScreen() {
   const mapRef = useRef<MapView>(null);
 
   const [userLocation, setUserLocation] = useState<DeviceLocation>(null);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [wearerLocation, setWearerLocation] = useState<DeviceLocation>(null);
-
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [alerts, setAlerts] = useState<AlertLog[]>([]);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [currentModalAlert, setCurrentModalAlert] = useState<AlertLog | null>(null);
 
-  const [currentModalAlert, setCurrentModalAlert] = useState<AlertLog | null>(
-    null,
-  );
+  // Track movement state via ref — avoids recreating location subscription on every speed change
+  const isMovingRef = useRef(false);
 
   const theme = {
     background: isDark ? "#000" : "#fff",
@@ -183,8 +206,10 @@ export default function DashboardScreen() {
     subText: isDark ? "#888" : "#666",
     border: isDark ? "#222" : "rgba(0,0,0,0.06)",
     brandGold: "#D0A97E",
+    warning: "#f59e0b",
   };
 
+  // ─── SOS Handler ─────────────────────────────────────────────────────────────
   const handleManualSOS = () => {
     Alert.alert(
       "Confirm Emergency",
@@ -198,11 +223,7 @@ export default function DashboardScreen() {
             if (isSending) return;
             setIsSending(true);
             try {
-              const alertsRef = ref(
-                rtdb,
-                `groups/${HARDCODED_GROUP_ID}/alerts`,
-              );
-
+              const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
               await push(alertsRef, {
                 message: `Manual App SOS triggered by ${user?.email || "Guardian"}`,
                 timestamp: Date.now(),
@@ -210,7 +231,7 @@ export default function DashboardScreen() {
                 latitude: null,
                 longitude: null,
               });
-
+              // Cloud Function handles push notifications from here
               Alert.alert("Success", "Emergency broadcast sent successfully!");
             } catch (error) {
               console.error("Failed to append RTDB Alert node:", error);
@@ -224,13 +245,12 @@ export default function DashboardScreen() {
     );
   };
 
-  // 🛰️ JOB 1: Upgraded High-Accuracy Continuous Background/Foreground Location Tracker
+  // ─── JOB 1: Foreground + Background Location Tracking ────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     let locationSubscription: Location.LocationSubscription | null = null;
 
     const setupLiveTracking = async () => {
-      // 1. Request BOTH Foreground and Background Tracking Permission sets seamlessly
       const { status: foreStatus } =
         await Location.requestForegroundPermissionsAsync();
       if (foreStatus !== "granted") return;
@@ -238,58 +258,58 @@ export default function DashboardScreen() {
       const { status: backStatus } =
         await Location.requestBackgroundPermissionsAsync();
       if (backStatus !== "granted") {
-        console.warn(
-          "Background location permission missing; app tracking will sleep when minimized.",
-        );
+        console.warn("Background permission missing — tracking pauses when minimized.");
       }
 
-      // 2. Continuous active interface watch engine loop for foreground map responsive drawing
+      // Foreground watch — drives the embedded dashboard map
       locationSubscription = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation, // 🔥 Upgrade choice from High to bypass cellular approximation
-          timeInterval: 2000, // Sync every 2 seconds for pinpoint refresh latency
-          distanceInterval: 1, // React immediately if guardian moves past 1 meter
+          // BestForNavigation = GPS + WiFi + Cell tower fusion (most accurate)
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 3000,   // 3s — good balance of freshness and battery
+          distanceInterval: 5,  // update if moved 5m
         },
         (location) => {
-          const accuracy = location.coords.accuracy ?? 999;
+          const { latitude, longitude, accuracy, speed } = location.coords;
+          const currentAccuracy = accuracy ?? 999;
+          const currentSpeed = speed ?? 0;
 
-          // Ignore bad GPS fixes
-          if (accuracy > 50) {
-            console.log(
-              `Skipping inaccurate location (${accuracy.toFixed(0)}m)`,
-            );
-            return;
-          }
-          const { latitude, longitude } = location.coords;
+          // ✅ Always update local map — never block user from seeing their position
           setUserLocation({ latitude, longitude });
+          setLocationAccuracy(currentAccuracy);
+          isMovingRef.current = currentSpeed > 0.5;
 
-          const myLocationRef = ref(
-            rtdb,
-            `groups/${HARDCODED_GROUP_ID}/members/${user.id}`,
-          );
-          set(myLocationRef, {
-            name: user.email?.split("@")[0] || "Group Member",
-            latitude,
-            longitude,
-            lastUpdated: Date.now(),
-          });
+          // ✅ Only broadcast to RTDB when GPS fix is reliable (≤50m accuracy)
+          // Prevents jitter on other members' screens during warm-up
+          if (currentAccuracy <= 50) {
+            const myLocationRef = ref(
+              rtdb,
+              `groups/${HARDCODED_GROUP_ID}/members/${user.id}`,
+            );
+            set(myLocationRef, {
+              name: user.email?.split("@")[0] || "Group Member",
+              latitude,
+              longitude,
+              accuracy: currentAccuracy,
+              lastUpdated: Date.now(),
+            });
+          }
         },
       );
 
-      // 3. Initiate Persistent OS system hooks to safeguard stream drops when app sleeps
+      // Background task — keeps running when app is minimized
       if (backStatus === "granted") {
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
           accuracy: Location.Accuracy.BestForNavigation,
           timeInterval: 5000,
           distanceInterval: 5,
-          showsBackgroundLocationIndicator: true, // Displays visual safety banner to user on iOS
+          showsBackgroundLocationIndicator: true,
           foregroundService: {
-            notificationTitle: "Tulong Security Core Active",
-            notificationBody:
-              "Live Tracking is safeguarding your family circle.",
+            notificationTitle: "CARE Security Active",
+            notificationBody: "Live tracking is protecting your family circle.",
             notificationColor: "#D0A97E",
           },
-          pausesLocationUpdatesAutomatically: false, // Core instruction parameter keeping iOS from pausing tracking
+          pausesLocationUpdatesAutomatically: false,
         });
       }
     };
@@ -298,7 +318,6 @@ export default function DashboardScreen() {
 
     return () => {
       if (locationSubscription) locationSubscription.remove();
-      // Safe cleanup of global hardware processes on component unmount
       Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).then(
         (hasStarted) => {
           if (hasStarted) Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
@@ -307,17 +326,15 @@ export default function DashboardScreen() {
     };
   }, [user?.id]);
 
-  // 📡 JOB 2: Listen to Circle Members Live Status Feed
+  // ─── JOB 2: Group Members Live Feed ─────────────────────────────────────────
   useEffect(() => {
     const membersRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members`);
-
     return onValue(membersRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
         const membersList = Object.keys(data)
           .filter((key) => key !== user?.id)
           .map((key) => ({ id: key, ...data[key] })) as GroupMember[];
-
         setGroupMembers(membersList);
       } else {
         setGroupMembers([]);
@@ -325,7 +342,7 @@ export default function DashboardScreen() {
     });
   }, [user?.id]);
 
-  // 🛰️ JOB 3: Listen to Continuous Wearable Device Path (With 0,0 Default Protection Filter)
+  // ─── JOB 3: Wearable Device Status ───────────────────────────────────────────
   useEffect(() => {
     const trackingRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/tracking`);
     return onValue(trackingRef, (snapshot) => {
@@ -336,41 +353,32 @@ export default function DashboardScreen() {
           signal: "Strong",
           lastSeen:
             data.lastUpdated || data.serverTime
-              ? new Date(
-                  data.lastUpdated || data.serverTime,
-                ).toLocaleTimeString()
+              ? new Date(data.lastUpdated || data.serverTime).toLocaleTimeString()
               : "Just now",
         });
-
         if (data.latitude && data.longitude) {
-          // 🚨 Safety Check: Avoid setting wearer position to 0,0 on indoor Arduino GPS drops
           if (data.latitude === 0 && data.longitude === 0) return;
-
-          setWearerLocation({
-            latitude: data.latitude,
-            longitude: data.longitude,
-          });
+          setWearerLocation({ latitude: data.latitude, longitude: data.longitude });
         }
       }
     });
   }, []);
 
-  // 🚨 JOB 4: Upgraded Alerts and SOS Tracker Mapping Listener
+  // ─── JOB 4: Alerts Listener ───────────────────────────────────────────────────
+  // NOTE: Push notifications are handled server-side via Firebase Cloud Function
+  // triggered on RTDB write — no client-side FCM needed here
   useEffect(() => {
     const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
     return onValue(alertsRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-
         const list = Object.keys(data).map((key) => {
           const item = data[key];
           return {
             id: key,
             message:
               item.message ||
-              (item.reason === "button"
-                ? "Hardware Emergency Button Pressed!"
-                : item.reason) ||
+              (item.reason === "button" ? "Hardware Emergency Button Pressed!" : item.reason) ||
               "SOS Emergency Triggered",
             timestamp: item.timestamp || item.serverTime || Date.now(),
             pushNotified: item.pushNotified || false,
@@ -380,7 +388,6 @@ export default function DashboardScreen() {
         });
 
         const latestAlert = list[list.length - 1] as AlertLog;
-
         const threeMinutesAgo = Date.now() - 3 * 60 * 1000;
         const alertTime =
           typeof latestAlert.timestamp === "number"
@@ -391,29 +398,27 @@ export default function DashboardScreen() {
           setCurrentModalAlert(latestAlert);
         }
 
-        if (latestAlert && !latestAlert.pushNotified) {
-          sendGroupPushNotification(HARDCODED_GROUP_ID);
-          update(
-            ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts/${latestAlert.id}`),
-            { pushNotified: true },
-          );
-        }
-
         setAlerts([...list].reverse().slice(0, 5) as AlertLog[]);
       }
     });
   }, []);
 
-  // 👥 JOB 5: Emergency Contacts Listener
+  // ─── JOB 5: Emergency Contacts ───────────────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     return onSnapshot(collection(db, "users", user.id, "contacts"), (snap) => {
-      setContacts(
-        snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Contact[],
-      );
+      setContacts(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Contact[]);
     });
   }, [user?.id]);
 
+  // ─── Helpers ──────────────────────────────────────────────────────────────────
+  const isStale = (lastUpdated: number) =>
+    Date.now() - lastUpdated > STALE_THRESHOLD_MS;
+
+  const getMemberColor = (index: number) =>
+    MEMBER_COLORS[index % MEMBER_COLORS.length];
+
+  // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -422,15 +427,15 @@ export default function DashboardScreen() {
       <View
         style={[styles.header, { paddingTop: Platform.OS === "ios" ? 60 : 40 }]}
       >
-        <Text style={[styles.headerTitle, { color: theme.text }]}>
-          Dashboard
-        </Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Dashboard</Text>
         <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
           <Ionicons name="log-out-outline" size={24} color={theme.text} />
         </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+
+        {/* Wearable Status Card */}
         <View
           style={[
             styles.healthCard,
@@ -445,15 +450,10 @@ export default function DashboardScreen() {
               Last synced: {deviceStatus.lastSeen}
             </Text>
           </View>
-
           <View style={styles.indicatorRow}>
             <View style={styles.indicatorItem}>
               <Ionicons
-                name={
-                  deviceStatus.battery > 20
-                    ? "battery-charging"
-                    : "battery-dead"
-                }
+                name={deviceStatus.battery > 20 ? "battery-charging" : "battery-dead"}
                 size={20}
                 color={deviceStatus.battery > 20 ? "#4ade80" : "#f87171"}
               />
@@ -462,7 +462,6 @@ export default function DashboardScreen() {
               </Text>
               <Text style={styles.indicatorLabel}>Battery</Text>
             </View>
-
             <View style={styles.indicatorItem}>
               <Ionicons name="cellular" size={20} color={theme.brandGold} />
               <Text style={[styles.indicatorVal, { color: theme.text }]}>
@@ -473,6 +472,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* SOS Button */}
         <View style={styles.section}>
           <TouchableOpacity
             style={[styles.sosButton, isSending && { opacity: 0.6 }]}
@@ -487,24 +487,51 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Live Map Card */}
         <View style={[styles.mapCard, { borderColor: theme.border }]}>
           <View style={styles.sectionHeader}>
             <Text style={{ color: theme.text, fontWeight: "700" }}>
               Live Tracking
             </Text>
-            <TouchableOpacity
-              onPress={() =>
-                wearerLocation &&
-                mapRef.current?.animateToRegion({
-                  ...wearerLocation,
-                  latitudeDelta: 0.01,
-                  longitudeDelta: 0.01,
-                })
-              }
-            >
-              <Text style={{ color: theme.brandGold }}>Center Wearer</Text>
-            </TouchableOpacity>
+            <View style={styles.mapHeaderRight}>
+              {/* GPS accuracy indicator */}
+              {locationAccuracy !== null && (
+                <View style={styles.accuracyBadge}>
+                  <View
+                    style={[
+                      styles.accuracyDot,
+                      {
+                        backgroundColor:
+                          locationAccuracy <= 10
+                            ? "#4ade80"
+                            : locationAccuracy <= 50
+                              ? "#f59e0b"
+                              : "#f87171",
+                      },
+                    ]}
+                  />
+                  <Text style={{ color: theme.subText, fontSize: 11 }}>
+                    {locationAccuracy <= 50
+                      ? `±${Math.round(locationAccuracy)}m`
+                      : "Getting fix..."}
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity
+                onPress={() =>
+                  wearerLocation &&
+                  mapRef.current?.animateToRegion({
+                    ...wearerLocation,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  })
+                }
+              >
+                <Text style={{ color: theme.brandGold }}>Center Wearer</Text>
+              </TouchableOpacity>
+            </View>
           </View>
+
           <View style={styles.mapContainer}>
             {userLocation ? (
               <MapView
@@ -517,19 +544,28 @@ export default function DashboardScreen() {
                   longitudeDelta: 0.05,
                 }}
               >
+                {/* Your location */}
                 <Marker
                   coordinate={userLocation}
                   title="You"
-                  pinColor="green"
-                />
+                  anchor={{ x: 0.5, y: 0.5 }}
+                >
+                  <YouMarker />
+                </Marker>
+
+                {/* Wearer device */}
                 {wearerLocation && (
                   <Marker
                     coordinate={wearerLocation}
                     title="Wearer Device"
-                    pinColor="blue"
-                  />
+                    anchor={{ x: 0.5, y: 0.5 }}
+                  >
+                    <WearerMarker />
+                  </Marker>
                 )}
-                {groupMembers.map((member) => (
+
+                {/* Group members */}
+                {groupMembers.map((member, index) => (
                   <Marker
                     key={member.id}
                     coordinate={{
@@ -537,13 +573,25 @@ export default function DashboardScreen() {
                       longitude: member.longitude,
                     }}
                     title={member.name}
-                    pinColor="orange"
-                  />
+                    description={
+                      isStale(member.lastUpdated)
+                        ? `⚠️ Location may be outdated`
+                        : `Updated ${new Date(member.lastUpdated).toLocaleTimeString()}`
+                    }
+                    anchor={{ x: 0.5, y: 0.5 }}
+                  >
+                    <MemberMarker
+                      name={member.name}
+                      color={getMemberColor(index)}
+                      isStale={isStale(member.lastUpdated)}
+                    />
+                  </Marker>
                 ))}
               </MapView>
             ) : (
               <View style={styles.loadingMap}>
-                <Text style={{ color: theme.subText }}>
+                <ActivityIndicator color={theme.brandGold} />
+                <Text style={{ color: theme.subText, marginTop: 8 }}>
                   Acquiring GPS Fix...
                 </Text>
               </View>
@@ -551,6 +599,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* Emergency Contacts */}
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>
@@ -567,7 +616,6 @@ export default function DashboardScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-
           {contacts.length > 0 ? (
             contacts.map((contact) => (
               <View
@@ -587,6 +635,7 @@ export default function DashboardScreen() {
           )}
         </View>
 
+        {/* Recent Alerts */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>
             Recent Alerts
@@ -633,6 +682,7 @@ export default function DashboardScreen() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
@@ -646,12 +696,32 @@ const styles = StyleSheet.create({
   logoutBtn: { padding: 5 },
   mapCard: { borderWidth: 1, borderRadius: 12, overflow: "hidden", margin: 16 },
   mapContainer: { height: 250, backgroundColor: "#eee" },
-  loadingMap: { height: 250, justifyContent: "center", alignItems: "center" },
+  loadingMap: {
+    height: 250,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   map: { width: "100%", height: "100%" },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     padding: 12,
+  },
+  mapHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  accuracyBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  accuracyDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
   section: { paddingHorizontal: 16, marginBottom: 20 },
   itemCard: {
