@@ -101,11 +101,13 @@ const markerStyles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "rgba(66, 133, 244, 0.25)",
+    // Solid color required on Android — rgba transparency causes custom markers to drop
+    backgroundColor: "#4285F4",
+    opacity: 0.85,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "#4285F4",
+    borderColor: "#fff",
   },
   youInner: {
     width: 11,
@@ -178,8 +180,8 @@ export default function TrackerScreen() {
 
       locationSubscription = await Location.watchPositionAsync(
         {
-          // BestForNavigation fuses GPS + WiFi + Cell towers for maximum accuracy
-          accuracy: Location.Accuracy.BestForNavigation,
+          // Highest = raw GPS only, no road-snapping navigation bias
+          accuracy: Location.Accuracy.Highest,
           // Adaptive: 3s when moving, 15s when still — saves battery
           timeInterval: isMovingRef.current ? 3000 : 15000,
           distanceInterval: isMovingRef.current ? 5 : 20,
@@ -359,8 +361,12 @@ export default function TrackerScreen() {
             title="You"
             description="Your live location"
             anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={true}
           >
-            <YouMarker />
+            {/* collapsable={false} required on Android to prevent custom view being dropped */}
+            <View collapsable={true}>
+              <YouMarker />
+            </View>
           </Marker>
 
           {/* Wearer IoT device */}
@@ -373,8 +379,11 @@ export default function TrackerScreen() {
               title="Wearer Device"
               description={`Battery: ${wearerDevice.batteryLevel ?? "Unknown"}%`}
               anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={true}
             >
-              <WearerMarker />
+              <View collapsable={true}>
+                <WearerMarker />
+              </View>
             </Marker>
           )}
 
@@ -393,12 +402,15 @@ export default function TrackerScreen() {
                   : `Updated ${new Date(member.lastUpdated).toLocaleTimeString()}`
               }
               anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={true}
             >
-              <MemberMarker
-                name={member.name}
-                color={getMemberColor(index)}
-                isStale={isStale(member.lastUpdated)}
-              />
+              <View collapsable={true}>
+                <MemberMarker
+                  name={member.name}
+                  color={getMemberColor(index)}
+                  isStale={isStale(member.lastUpdated)}
+                />
+              </View>
             </Marker>
           ))}
         </MapView>

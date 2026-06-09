@@ -7,6 +7,7 @@ import { onValue, push, ref, set, update } from "firebase/database";
 import { collection, onSnapshot } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Platform,
   ScrollView,
@@ -157,11 +158,12 @@ const markerStyles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "rgba(66, 133, 244, 0.25)",
+    backgroundColor: "#4285F4",
+    opacity: 0.85,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "#4285F4",
+    borderColor: "#fff",
   },
   youInner: {
     width: 9,
@@ -264,8 +266,8 @@ export default function DashboardScreen() {
       // Foreground watch — drives the embedded dashboard map
       locationSubscription = await Location.watchPositionAsync(
         {
-          // BestForNavigation = GPS + WiFi + Cell tower fusion (most accurate)
-          accuracy: Location.Accuracy.BestForNavigation,
+          // Highest = raw GPS only, no road-snapping navigation bias
+          accuracy: Location.Accuracy.Highest,
           timeInterval: 3000,   // 3s — good balance of freshness and battery
           distanceInterval: 5,  // update if moved 5m
         },
@@ -300,7 +302,7 @@ export default function DashboardScreen() {
       // Background task — keeps running when app is minimized
       if (backStatus === "granted") {
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-          accuracy: Location.Accuracy.BestForNavigation,
+          accuracy: Location.Accuracy.Highest,
           timeInterval: 5000,
           distanceInterval: 5,
           showsBackgroundLocationIndicator: true,
@@ -549,8 +551,11 @@ export default function DashboardScreen() {
                   coordinate={userLocation}
                   title="You"
                   anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={true}
                 >
-                  <YouMarker />
+                  <View collapsable={true}>
+                    <YouMarker />
+                  </View>
                 </Marker>
 
                 {/* Wearer device */}
@@ -559,8 +564,11 @@ export default function DashboardScreen() {
                     coordinate={wearerLocation}
                     title="Wearer Device"
                     anchor={{ x: 0.5, y: 0.5 }}
+                    tracksViewChanges={true}
                   >
-                    <WearerMarker />
+                    <View collapsable={true}>
+                      <WearerMarker />
+                    </View>
                   </Marker>
                 )}
 
@@ -579,12 +587,15 @@ export default function DashboardScreen() {
                         : `Updated ${new Date(member.lastUpdated).toLocaleTimeString()}`
                     }
                     anchor={{ x: 0.5, y: 0.5 }}
+                    tracksViewChanges={true}
                   >
-                    <MemberMarker
-                      name={member.name}
-                      color={getMemberColor(index)}
-                      isStale={isStale(member.lastUpdated)}
-                    />
+                    <View collapsable={true}>
+                      <MemberMarker
+                        name={member.name}
+                        color={getMemberColor(index)}
+                        isStale={isStale(member.lastUpdated)}
+                      />
+                    </View>
                   </Marker>
                 ))}
               </MapView>
