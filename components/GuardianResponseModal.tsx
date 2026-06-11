@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
 import {
-    Animated,
-    Easing,
-    Modal,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Easing,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from 'react-native';
 
 type Props = {
@@ -41,6 +42,10 @@ export default function GuardianResponseModal({
 
   useEffect(() => {
     if (visible) {
+      // Double-tap vibration — like a text message notification
+      // Pattern: wait 0ms → buzz 120ms → pause 80ms → buzz 120ms
+      Vibration.vibrate([0, 120, 80, 120]);
+
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -62,10 +67,15 @@ export default function GuardianResponseModal({
         }),
       ]).start();
     } else {
+      Vibration.cancel();
       fadeAnim.setValue(0);
       slideAnim.setValue(60);
       scaleAnim.setValue(0.9);
     }
+
+    return () => {
+      Vibration.cancel();
+    };
   }, [visible]);
 
   const formatTime = (ts: any) => {
@@ -133,7 +143,10 @@ export default function GuardianResponseModal({
           {/* Okay button */}
           <TouchableOpacity
             style={[styles.okayBtn, { backgroundColor: config.color }]}
-            onPress={onDismiss}
+            onPress={() => {
+              Vibration.cancel();
+              onDismiss();
+            }}
             activeOpacity={0.85}
           >
             <Text style={styles.okayBtnText}>Okay</Text>
