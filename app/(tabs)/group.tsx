@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -298,9 +299,14 @@ export default function GroupScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [lastSeenTimestamp, setLastSeenTimestamp] = useState(Date.now());
 
-  const locationWatcher = useRef<Location.LocationSubscription | null>(null);
+  // Toast notification — shown to the guardian who just submitted their status
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // FIX: Store Firestore unsubscribers to prevent memory leak
   const groupUnsubsRef = useRef<(() => void)[]>([]);
+  const locationWatcher = useRef<Location.LocationSubscription | null>(null);
 
   // Unread badge count — messages from others since user last viewed chat
   const unreadCount = messages.filter(
@@ -336,8 +342,8 @@ export default function GroupScreen() {
 
     return () => {
       if (locationWatcher.current) locationWatcher.current.remove();
-      // FIX: Clean up Firestore listeners on unmount to prevent memory leak
       groupUnsubsRef.current.forEach((unsub) => unsub());
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, [user?.id]);
 
@@ -514,6 +520,33 @@ export default function GroupScreen() {
     }
   };
 
+  // ─── Toast helper ──────────────────────────────────────────────────────────
+  const showToast = (message: string) => {
+    // Clear any existing timer so rapid calls don't stack
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+
+    setToastMessage(message);
+    setToastVisible(true);
+
+    // Slide up
+    toastAnim.setValue(0);
+    Animated.spring(toastAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 10,
+    }).start();
+
+    // Auto-dismiss after 3 seconds
+    toastTimerRef.current = setTimeout(() => {
+      Animated.timing(toastAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => setToastVisible(false));
+    }, 3000);
+  };
+
   // ─── Guardian Status Update (Action Sheet) ──────────────────────────────────
   const handleStatusUpdate = async (
     status: "responded" | "on_the_way" | "arrived" | "aided",
@@ -524,12 +557,22 @@ export default function GroupScreen() {
       await update(ref(rtdb, `groups/${group.id}/alerts/${activeAlert.id}`), {
         currentStatus: status,
         lastResponderName: user?.email?.split("@")[0] || "A Guardian",
+        lastResponderId: user?.id ?? null,
         lastUpdateAt: new Date().toISOString(),
       });
-      // Also post the status change to chat so everyone sees it
       await postStatusToChat(status);
+
+      // Show toast to the responder — they don't get the modal, they get this instead
+      const statusLabels: Record<string, string> = {
+        responded: "Response sent to all guardians ✅",
+        on_the_way: "Guardians notified you're on the way 🚗",
+        arrived: "Guardians notified you've arrived 📍",
+        aided: "Guardians notified wearer has been aided ✅",
+      };
+      showToast(statusLabels[status] ?? "Status sent to guardians");
     } catch (error) {
       console.error("Failed to update status:", error);
+      Alert.alert("Error", "Failed to send your status. Please try again.");
     } finally {
       setIsUpdatingStatus(false);
       setShowActionSheet(false);
@@ -1054,6 +1097,30 @@ export default function GroupScreen() {
       />
 
       <QuickBar />
+
+      {/* ── Toast notification — shown to the responder after picking a status ── */}
+      {toastVisible && (
+        <Animated.View
+          style={[
+            styles.toast,
+            {
+              opacity: toastAnim,
+              transform: [
+                {
+                  translateY: toastAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [20, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <Ionicons name="checkmark-circle" size={18} color="#4ade80" />
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </Animated.View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -1238,5 +1305,33 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "bold",
     fontSize: 16,
+  },
+  // Toast — shown to the responder after picking a guardian status
+  toast: {
+    position: "absolute",
+    bottom: Platform.OS === "ios" ? 120 : 90,
+    left: 24,
+    right: 24,
+    backgroundColor: "#1c1c1e",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.3)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 999,
+  },
+  toastText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    flex: 1,
   },
 });

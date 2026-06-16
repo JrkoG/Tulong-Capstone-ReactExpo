@@ -39,7 +39,9 @@ type AlertLog = {
   // Guardian response fields — written by group.tsx handleStatusUpdate
   currentStatus?: "responded" | "on_the_way" | "arrived" | "aided";
   lastResponderName?: string;
+  lastResponderId?: string;
   lastUpdateAt?: string;
+  triggeredBy?: string;
 };
 type DeviceLocation = { latitude: number; longitude: number; accuracy?: number } | null;
 type GroupMember = {
@@ -63,6 +65,12 @@ const STATUS_MESSAGES: Record<string, string> = {
   arrived: "has arrived at the wearer's location",
   aided: "has aided the wearer — situation under control",
 };
+
+// ─── Module-level session state ───────────────────────────────────────────────
+// These live OUTSIDE the component so they survive tab switches and remounts.
+// Refs reset to initial values every remount — module vars do not.
+let _seenGuardianStatusKey: string | null = null;
+let _alertsListenerInitialized = false;
 
 // ─── Background Task ──────────────────────────────────────────────────────────
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
@@ -213,10 +221,6 @@ export default function DashboardScreen() {
     timestamp: any;
   } | null>(null);
 
-  // Ref guards — prevent guardian modal from firing on initial data load
-  const isInitialAlertsLoad = useRef(true);
-  const lastSeenGuardianStatus = useRef<string | null>(null);
-
   // Track movement state and last broadcasted coords to prevent jitter
   const isMovingRef = useRef(false);
   const lastBroadcastedCoords = useRef<DeviceLocation>(null);
@@ -234,11 +238,11 @@ export default function DashboardScreen() {
   const handleManualSOS = () => {
     Alert.alert(
       "Confirm Emergency",
-      "Are you sure you want to broadcast a manual SOS to the entire group?",
+      "Are you sure you want to notify all guardians with an SOS alert?",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "TRIGGER",
+          text: "NOTIFY",
           style: "destructive",
           onPress: async () => {
             if (isSending) return;
@@ -251,8 +255,10 @@ export default function DashboardScreen() {
                 pushNotified: false,
                 latitude: null,
                 longitude: null,
+                // Store sender ID so they don't receive their own SOSModal popup
+                triggeredBy: user?.id ?? null,
               });
-              Alert.alert("Success", "Emergency broadcast sent successfully!");
+              Alert.alert("Success", "Guardians have been notified!");
             } catch (error) {
               console.error("Failed to append RTDB Alert node:", error);
               Alert.alert("Error", "Failed to connect to database server.");
@@ -414,7 +420,9 @@ export default function DashboardScreen() {
             longitude: item.longitude !== undefined ? item.longitude : item.lng,
             currentStatus: item.currentStatus,
             lastResponderName: item.lastResponderName,
+            lastResponderId: item.lastResponderId,
             lastUpdateAt: item.lastUpdateAt,
+            triggeredBy: item.triggeredBy,
           };
         });
 
@@ -426,41 +434,54 @@ export default function DashboardScreen() {
             : Date.now();
 
         if (latestAlert && alertTime > threeMinutesAgo) {
-          setCurrentModalAlert(latestAlert);
+          // Don't show SOSModal to the person who triggered the alert — they already know
+          if (latestAlert.triggeredBy !== user?.id) {
+            setCurrentModalAlert(latestAlert);
+          }
         }
 
         // ─── Guardian Response Detection ───────────────────────────────────────
-        // Scan ALL alerts for a guardian response — not just the last one.
-        // Finds the most recently updated alert that has a currentStatus field.
         const alertWithResponse = list
           .filter((a) => a.currentStatus && a.lastResponderName && a.lastUpdateAt)
           .sort((a, b) => {
             const tA = new Date(a.lastUpdateAt ?? 0).getTime();
             const tB = new Date(b.lastUpdateAt ?? 0).getTime();
-            return tB - tA; // newest first
+            return tB - tA;
           })[0] as AlertLog | undefined;
 
-        if (!isInitialAlertsLoad.current) {
-          if (alertWithResponse) {
-            const statusKey = `${alertWithResponse.lastResponderName}-${alertWithResponse.currentStatus}-${alertWithResponse.lastUpdateAt}`;
-            if (statusKey !== lastSeenGuardianStatus.current) {
-              lastSeenGuardianStatus.current = statusKey;
-              setGuardianResponse({
-                name: alertWithResponse.lastResponderName!,
-                status: alertWithResponse.currentStatus!,
-                message: `${alertWithResponse.lastResponderName} ${STATUS_MESSAGES[alertWithResponse.currentStatus!] ?? "updated their status"}`,
-                timestamp: alertWithResponse.lastUpdateAt ?? Date.now(),
-              });
+        if (alertWithResponse) {
+          const statusKey = `${alertWithResponse.lastResponderName}-${alertWithResponse.currentStatus}-${alertWithResponse.lastUpdateAt}`;
+
+          // Recency gate: only show if status was updated within the last 90 seconds.
+          // Combined with module-level tracking this prevents stale data from
+          // ever triggering the modal — even across remounts, tab switches, or
+          // dev server reloads.
+          const updateTime = new Date(alertWithResponse.lastUpdateAt ?? 0).getTime();
+          const isRecent = Date.now() - updateTime < 90 * 1000;
+
+          if (_alertsListenerInitialized) {
+            // Normal path — show modal only for new + recent + not self responses
+            if (isRecent && statusKey !== _seenGuardianStatusKey) {
+              _seenGuardianStatusKey = statusKey;
+              if (alertWithResponse.lastResponderId !== user?.id) {
+                setGuardianResponse({
+                  name: alertWithResponse.lastResponderName!,
+                  status: alertWithResponse.currentStatus!,
+                  message: `${alertWithResponse.lastResponderName} ${STATUS_MESSAGES[alertWithResponse.currentStatus!] ?? "updated their status"}`,
+                  timestamp: alertWithResponse.lastUpdateAt ?? Date.now(),
+                });
+              }
             }
-          }
-        } else {
-          // Initial load — mark done AND seed lastSeen so existing
-          // responses don't re-trigger the modal when the user reopens the app
-          isInitialAlertsLoad.current = false;
-          if (alertWithResponse) {
-            lastSeenGuardianStatus.current = `${alertWithResponse.lastResponderName}-${alertWithResponse.currentStatus}-${alertWithResponse.lastUpdateAt}`;
+          } else {
+            // First fire on this listener — always seed without showing modal,
+            // regardless of recency. This covers cold app start, remount, and
+            // dev Fast Refresh scenarios.
+            _seenGuardianStatusKey = statusKey;
           }
         }
+
+        // Mark listener as ready — all future fires go through the normal path
+        _alertsListenerInitialized = true;
 
         setAlerts([...list].reverse().slice(0, 5) as AlertLog[]);
       }
@@ -515,15 +536,30 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.section}>
-          <TouchableOpacity
-            style={[styles.sosButton, isSending && { opacity: 0.6 }]}
-            onPress={handleManualSOS}
-            disabled={isSending}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="alert-circle" size={26} color="#fff" />
-            <Text style={styles.sosButtonText}>{isSending ? "SENDING SOS..." : "TRIGGER APP SOS ALERT"}</Text>
-          </TouchableOpacity>
+          <View style={styles.buttonRow}>
+            {/* Left: Notify Guardians (renamed from TRIGGER APP SOS ALERT) */}
+            <TouchableOpacity
+              style={[styles.sosButton, isSending && { opacity: 0.6 }]}
+              onPress={handleManualSOS}
+              disabled={isSending}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="alert-circle" size={20} color="#fff" />
+              <Text style={styles.sosButtonText}>
+                {isSending ? "Sending..." : "Notify Guardians"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Right: Track Wearer */}
+            <TouchableOpacity
+              style={styles.trackButton}
+              onPress={() => router.push("/track-wearer")}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="navigate" size={20} color="#fff" />
+              <Text style={styles.trackButtonText}>Track Wearer</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={[styles.mapCard, { borderColor: theme.border }]}>
@@ -716,6 +752,9 @@ const styles = StyleSheet.create({
   indicatorItem: { alignItems: "center" },
   indicatorVal: { fontSize: 16, fontWeight: "800", marginTop: 4 },
   indicatorLabel: { fontSize: 10, color: "#888", textTransform: "uppercase" },
-  sosButton: { backgroundColor: "#ef4444", paddingVertical: 16, borderRadius: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, shadowColor: "#ef4444", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
-  sosButtonText: { color: "#fff", fontSize: 16, fontWeight: "800", letterSpacing: 0.5 },
+  buttonRow: { flexDirection: "row", gap: 10 },
+  sosButton: { flex: 1, backgroundColor: "#ef4444", paddingVertical: 16, borderRadius: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, shadowColor: "#ef4444", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
+  sosButtonText: { color: "#fff", fontSize: 13, fontWeight: "800", letterSpacing: 0.3 },
+  trackButton: { flex: 1, backgroundColor: "#D0A97E", paddingVertical: 16, borderRadius: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, shadowColor: "#D0A97E", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
+  trackButtonText: { color: "#fff", fontSize: 13, fontWeight: "800", letterSpacing: 0.3 },
 });
