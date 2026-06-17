@@ -551,7 +551,11 @@ export default function GroupScreen() {
   const handleStatusUpdate = async (
     status: "responded" | "on_the_way" | "arrived" | "aided",
   ) => {
-    if (!activeAlert?.id || !group?.id) return;
+    // Guard against double-fire from fast double-taps. TouchableOpacity's
+    // `disabled` prop can lag one render behind a rapid double-tap, letting
+    // onPress fire twice before React applies the disabled state — this was
+    // causing duplicate "has responded to the alert" messages in chat.
+    if (!activeAlert?.id || !group?.id || isUpdatingStatus) return;
     setIsUpdatingStatus(true);
     try {
       await update(ref(rtdb, `groups/${group.id}/alerts/${activeAlert.id}`), {

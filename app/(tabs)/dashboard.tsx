@@ -19,7 +19,6 @@ import {
   View,
 } from "react-native";
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from "react-native-maps";
-import GuardianResponseModal from "../../components/GuardianResponseModal";
 import PrivacyConsentModal from "../../components/PrivacyConsentModal";
 import QuickBar from "../../components/QuickBar";
 import SOSModal from "../../components/SOSModal";
@@ -57,20 +56,6 @@ const LOCATION_TASK_NAME = "background-location-task";
 const HARDCODED_GROUP_ID = "qwi4UVJBinray0ZQm95e";
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 const MEMBER_COLORS = ["#4ade80", "#60a5fa", "#f472b6", "#a78bfa", "#fb923c"];
-
-// Maps guardian status → human-readable message for the response modal
-const STATUS_MESSAGES: Record<string, string> = {
-  responded: "has responded to the alert",
-  on_the_way: "is on the way to the wearer",
-  arrived: "has arrived at the wearer's location",
-  aided: "has aided the wearer — situation under control",
-};
-
-// ─── Module-level session state ───────────────────────────────────────────────
-// These live OUTSIDE the component so they survive tab switches and remounts.
-// Refs reset to initial values every remount — module vars do not.
-let _seenGuardianStatusKey: string | null = null;
-let _alertsListenerInitialized = false;
 
 // ─── Background Task ──────────────────────────────────────────────────────────
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
@@ -212,14 +197,6 @@ export default function DashboardScreen() {
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [currentModalAlert, setCurrentModalAlert] = useState<AlertLog | null>(null);
-
-  // Guardian response modal state
-  const [guardianResponse, setGuardianResponse] = useState<{
-    name: string;
-    status: "responded" | "on_the_way" | "arrived" | "aided";
-    message: string;
-    timestamp: any;
-  } | null>(null);
 
   // Track movement state and last broadcasted coords to prevent jitter
   const isMovingRef = useRef(false);
@@ -439,49 +416,6 @@ export default function DashboardScreen() {
             setCurrentModalAlert(latestAlert);
           }
         }
-
-        // ─── Guardian Response Detection ───────────────────────────────────────
-        const alertWithResponse = list
-          .filter((a) => a.currentStatus && a.lastResponderName && a.lastUpdateAt)
-          .sort((a, b) => {
-            const tA = new Date(a.lastUpdateAt ?? 0).getTime();
-            const tB = new Date(b.lastUpdateAt ?? 0).getTime();
-            return tB - tA;
-          })[0] as AlertLog | undefined;
-
-        if (alertWithResponse) {
-          const statusKey = `${alertWithResponse.lastResponderName}-${alertWithResponse.currentStatus}-${alertWithResponse.lastUpdateAt}`;
-
-          // Recency gate: only show if status was updated within the last 90 seconds.
-          // Combined with module-level tracking this prevents stale data from
-          // ever triggering the modal — even across remounts, tab switches, or
-          // dev server reloads.
-          const updateTime = new Date(alertWithResponse.lastUpdateAt ?? 0).getTime();
-          const isRecent = Date.now() - updateTime < 90 * 1000;
-
-          if (_alertsListenerInitialized) {
-            // Normal path — show modal only for new + recent + not self responses
-            if (isRecent && statusKey !== _seenGuardianStatusKey) {
-              _seenGuardianStatusKey = statusKey;
-              if (alertWithResponse.lastResponderId !== user?.id) {
-                setGuardianResponse({
-                  name: alertWithResponse.lastResponderName!,
-                  status: alertWithResponse.currentStatus!,
-                  message: `${alertWithResponse.lastResponderName} ${STATUS_MESSAGES[alertWithResponse.currentStatus!] ?? "updated their status"}`,
-                  timestamp: alertWithResponse.lastUpdateAt ?? Date.now(),
-                });
-              }
-            }
-          } else {
-            // First fire on this listener — always seed without showing modal,
-            // regardless of recency. This covers cold app start, remount, and
-            // dev Fast Refresh scenarios.
-            _seenGuardianStatusKey = statusKey;
-          }
-        }
-
-        // Mark listener as ready — all future fires go through the normal path
-        _alertsListenerInitialized = true;
 
         setAlerts([...list].reverse().slice(0, 5) as AlertLog[]);
       }
@@ -711,16 +645,6 @@ export default function DashboardScreen() {
             : undefined
         }
         onDismiss={() => setCurrentModalAlert(null)}
-      />
-
-      {/* Shows when any guardian picks a status from the action sheet in group.tsx */}
-      <GuardianResponseModal
-        visible={!!guardianResponse}
-        guardianName={guardianResponse?.name ?? ""}
-        status={guardianResponse?.status ?? "responded"}
-        message={guardianResponse?.message ?? ""}
-        timestamp={guardianResponse?.timestamp}
-        onDismiss={() => setGuardianResponse(null)}
       />
     </View>
   );
