@@ -118,8 +118,8 @@ export default function LoginScreen() {
                 <Ionicons name="location-sharp" size={24} color={theme.brandGold} />
               </View>
               <View>
-                <Text style={[styles.brandName, { color: theme.text }]}>Tulong</Text>
-                <Text style={[styles.brandSub, { color: theme.placeholder }]}>Community Safety</Text>
+                <Text style={[styles.brandName, { color: theme.text }]}>C.A.R.E</Text>
+                <Text style={[styles.brandSub, { color: theme.placeholder }]}>______________</Text>
               </View>
             </View>
             <Text style={[styles.mainTitle, { color: theme.text }]}>Login</Text>

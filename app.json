@@ -1,23 +1,26 @@
 {
   "expo": {
-    "name": "tulong-app",
+    "name": "CARE-app",
     "slug": "tulong-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "tulongapp",
+    "scheme": "careapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      
+      "bundleIdentifier": "com.tulong.app",
       "supportsTablet": true,
       "config": {
-        "googleMapsApiKey": "AIzaSyAHjrWuK1uyXEJ40drMPzqiwItVtCYaKzw"
+        "googleMapsApiKey": "AIzaSyAHjrWuK1uyXEJ40drMPzqiwItVtCYaKzw",
+        "googleServicesFile": "./GoogleService-Info.plist"
       },
       "infoPlist": {
         "UIBackgroundModes": ["location", "fetch", "remote-notification"],
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Tulong needs your location to alert your contacts when you press the SOS button.",
-        "NSLocationAlwaysUsageDescription": "Tulong needs background location to track your position during emergencies.",
-        "NSLocationWhenInUseUsageDescription": "Tulong needs your location to send it to your emergency contacts."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "CARE-app needs your location to alert your contacts when you press the SOS button.",
+        "NSLocationAlwaysUsageDescription": "CARE-app needs background location to track your position during emergencies.",
+        "NSLocationWhenInUseUsageDescription": "CARE-app needs your location to send it to your emergency contacts."
       }
     },
     "android": {
@@ -40,6 +43,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "POST_NOTIFICATIONS"
@@ -51,6 +56,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-task-manager",
       [
         "expo-splash-screen",
         {
@@ -72,11 +78,14 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Tulong needs your location to alert your contacts when you press the SOS button.",
-          "locationAlwaysPermission": "Tulong needs background location to track your position during emergencies.",
-          "locationWhenInUsePermission": "Tulong needs your location to send it to your emergency contacts."
+          "locationAlwaysAndWhenInUsePermission": "CARE-app needs your location to alert your contacts when you press the SOS button.",
+          "locationAlwaysPermission": "CARE-app needs background location to track your position during emergencies.",
+          "locationWhenInUsePermission": "CARE-app needs your location to send it to your emergency contacts.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
