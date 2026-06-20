@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-import { Ionicons } from '@expo/vector-icons';
-import { Tabs, useRouter } from 'expo-router';
-import React from 'react';
-import {
-=======
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
@@ -14,22 +8,14 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
   Alert,
+  Linking,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-<<<<<<< HEAD
-  View,
-  useColorScheme
-} from 'react-native';
-import QuickBar from '../../components/QuickBar';
-import { auth } from '../../config/firebase';
-=======
   useColorScheme,
   View,
 } from "react-native";
@@ -105,7 +91,6 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     }
   }
 });
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 Notifications.setNotificationHandler({
@@ -191,13 +176,9 @@ const markerStyles = StyleSheet.create({
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
+  const { logout, user } = useAuth();
+  const { activeAlert, dismissAlert } = useAlertListener(user?.id);
   const router = useRouter();
-<<<<<<< HEAD
-  
-  // SMART THEME: Automatically follows system settings (Light/Dark)
-  const systemColorScheme = useColorScheme();
-  const isDark = systemColorScheme === 'dark';
-=======
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
@@ -221,84 +202,8 @@ export default function DashboardScreen() {
   // Track movement state and last broadcasted coords to prevent jitter
   const isMovingRef = useRef(false);
   const lastBroadcastedCoords = useRef<DeviceLocation>(null);
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
 
-  // THEME COLORS
   const theme = {
-<<<<<<< HEAD
-    background: isDark ? '#000000' : '#f8f9fa',
-    cardBackground: isDark ? '#121212' : '#ffffff',
-    textPrimary: isDark ? '#ffffff' : '#111111',
-    textSecondary: isDark ? '#9ca3af' : '#6b7280',
-    brandGold: '#D0A97E',
-    border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-    danger: '#ef4444',
-  };
-
-  const handleLogoutPress = () => {
-    Alert.alert(
-      "Logout",
-      "Are you sure you want to log out of Tulong App?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Log Out", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await auth.signOut();
-            } catch (error) {
-              Alert.alert("Error", "Failed to log out cleanly.");
-            }
-          } 
-        }
-      ]
-    );
-  };
-
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <Tabs.Screen options={{ headerShown: false }} />
-      
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      
-      {/* ─── HEADER ROW ─── */}
-      <View style={styles.headerRow}>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Dashboard</Text>
-        
-        <View style={styles.headerActions}>
-          {/* Logout Icon */}
-          <TouchableOpacity 
-            style={styles.iconButton} 
-            onPress={handleLogoutPress}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="log-out-outline" size={26} color={theme.textPrimary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView 
-        contentContainerStyle={styles.scrollPaddingBottom}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* WEARER HEALTH CARD */}
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={[styles.cardTitle, { color: theme.textSecondary }]}>WEARER HEALTH</Text>
-            <Text style={[styles.timeText, { color: theme.textSecondary }]}>Last synced: --</Text>
-          </View>
-          <View style={styles.healthStatsRow}>
-            <View style={styles.statBox}>
-              <Ionicons name="battery-dead" size={28} color={theme.danger} />
-              <Text style={[styles.statValue, { color: theme.textPrimary }]}>0%</Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>BATTERY</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Ionicons name="cellular-outline" size={28} color={theme.textSecondary} />
-              <Text style={[styles.statValue, { color: theme.textPrimary }]}>Offline</Text>
-              <Text style={[styles.statLabel, { color: theme.textSecondary }]}>SIGNAL</Text>
-=======
     background: isDark ? "#000" : "#fff",
     card: isDark ? "#111" : "#f9f9f9",
     text: isDark ? "#fff" : "#111",
@@ -529,6 +434,30 @@ export default function DashboardScreen() {
   const isStale = (lastUpdated: number) => Date.now() - lastUpdated > STALE_THRESHOLD_MS;
   const getMemberColor = (index: number) => MEMBER_COLORS[index % MEMBER_COLORS.length];
 
+  // Opens the native phone dialer with the contact's number pre-filled
+  const handleCall = (phone: string) => {
+    const cleaned = phone.replace(/[^0-9+]/g, ""); // strip spaces/dashes, keep digits and +
+    if (!cleaned) {
+      Alert.alert("Error", "This contact has no valid phone number.");
+      return;
+    }
+    Linking.openURL(`tel:${cleaned}`).catch(() => {
+      Alert.alert("Error", "Could not open the phone dialer on this device.");
+    });
+  };
+
+  // Confirms before logging out, so a stray tap doesn't sign the user out
+  const handleLogoutPress = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Log Out", style: "destructive", onPress: logout },
+      ],
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -536,7 +465,7 @@ export default function DashboardScreen() {
 
       <View style={[styles.header, { paddingTop: Platform.OS === "ios" ? 60 : 40 }]}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Dashboard</Text>
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
+        <TouchableOpacity onPress={handleLogoutPress} style={styles.logoutBtn}>
           <Ionicons name="log-out-outline" size={24} color={theme.text} />
         </TouchableOpacity>
       </View>
@@ -561,49 +490,10 @@ export default function DashboardScreen() {
               <Ionicons name="cellular" size={20} color={theme.brandGold} />
               <Text style={[styles.indicatorVal, { color: theme.text }]}>{deviceStatus.signal}</Text>
               <Text style={styles.indicatorLabel}>Signal</Text>
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
             </View>
           </View>
         </View>
 
-<<<<<<< HEAD
-        {/* LIVE TRACKING MAP CONTAINER */}
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>Live Tracking</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/tracker')}>
-              <Text style={{ color: theme.brandGold, fontWeight: '600', fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif' }}>Center</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.mapPlaceholder, { backgroundColor: isDark ? '#1a1a1a' : '#e5e7eb' }]}>
-            <Text style={{ color: theme.textSecondary }}>Map Content Space</Text>
-          </View>
-        </View>
-
-        {/* EMERGENCY CONTACTS */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Emergency Contacts</Text>
-          <TouchableOpacity style={[styles.addButton, { backgroundColor: 'rgba(208, 169, 126, 0.15)' }]} onPress={() => router.push('/(tabs)/add-contact')}>
-            <Text style={{ color: theme.brandGold, fontWeight: '700' }}>+ Add</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, padding: 16, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
-          <Text style={[styles.contactName, { color: theme.textPrimary }]}>luke</Text>
-          <Text style={[styles.contactPhone, { color: theme.textSecondary }]}>9931802186</Text>
-        </View>
-
-        {/* GUARDIAN SUMMARY */}
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginTop: 16 }]}>Guardian Summary</Text>
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, borderLeftWidth: 4, borderLeftColor: '#22c55e', padding: 16, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
-          <Text style={[styles.bodyText, { color: theme.textSecondary }]}>No recent guardian activity.</Text>
-        </View>
-
-        {/* RECENT ALERTS */}
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginTop: 16 }]}>Recent Alerts</Text>
-        <View style={[styles.card, { backgroundColor: theme.cardBackground, padding: 16, borderColor: theme.border, borderWidth: isDark ? 1 : 0 }]}>
-          <Text style={[styles.bodyText, { color: theme.textSecondary }]}>No historical alerts logged.</Text>
-=======
         <View style={styles.section}>
           <View style={styles.buttonRow}>
             {/* Left: Notify Guardians (renamed from TRIGGER APP SOS ALERT) */}
@@ -744,9 +634,21 @@ export default function DashboardScreen() {
           </View>
           {contacts.length > 0 ? (
             contacts.map((contact) => (
-              <View key={contact.id} style={[styles.itemCard, { backgroundColor: theme.card }]}>
-                <Text style={{ color: theme.text, fontWeight: "600" }}>{contact.name}</Text>
-                <Text style={{ color: theme.subText }}>{contact.phone}</Text>
+              <View
+                key={contact.id}
+                style={[styles.itemCard, styles.contactCard, { backgroundColor: theme.card }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontWeight: "600" }}>{contact.name}</Text>
+                  <Text style={{ color: theme.subText }}>{contact.phone}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.callBtn, { backgroundColor: theme.brandGold }]}
+                  onPress={() => handleCall(contact.phone)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="call" size={18} color="#fff" />
+                </TouchableOpacity>
               </View>
             ))
           ) : (
@@ -764,14 +666,10 @@ export default function DashboardScreen() {
               </Text>
             </View>
           ))}
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
         </View>
       </ScrollView>
 
       <QuickBar />
-<<<<<<< HEAD
-    </SafeAreaView>
-=======
 
       <PrivacyConsentModal visible={showPrivacy} userId={user?.id ?? ""} onConsent={() => setShowPrivacy(false)} />
       <SOSModal
@@ -786,130 +684,11 @@ export default function DashboardScreen() {
         onDismiss={() => setCurrentModalAlert(null)}
       />
     </View>
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-<<<<<<< HEAD
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 40 : 12,
-    paddingBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  iconButton: {
-    padding: 8,
-    borderRadius: 12,
-  },
-  scrollPaddingBottom: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 140 : 120, 
-  },
-  card: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  cardTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-  timeText: {
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-  healthStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  statBox: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-  mapPlaceholder: {
-    width: '100%',
-    height: 180,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-  addButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  contactName: {
-    fontSize: 16,   
-    fontWeight: '600',
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-  contactPhone: {
-    fontSize: 14,
-    marginTop: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-  bodyText: {
-    fontSize: 14,
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  },
-=======
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 10 },
   headerTitle: { fontSize: 28, fontWeight: "800" },
   logoutBtn: { padding: 5 },
@@ -923,6 +702,8 @@ const styles = StyleSheet.create({
   accuracyDot: { width: 7, height: 7, borderRadius: 3.5 },
   section: { paddingHorizontal: 16, marginBottom: 20 },
   itemCard: { padding: 15, borderRadius: 10, marginBottom: 8, flexDirection: "column" },
+  contactCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  callBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", marginLeft: 12 },
   sectionHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "700" },
   addButton: { flexDirection: "row", alignItems: "center", gap: 4 },
@@ -939,5 +720,4 @@ const styles = StyleSheet.create({
   sosButtonText: { color: "#fff", fontSize: 13, fontWeight: "800", letterSpacing: 0.3 },
   trackButton: { flex: 1, backgroundColor: "#D0A97E", paddingVertical: 16, borderRadius: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, shadowColor: "#D0A97E", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
   trackButtonText: { color: "#fff", fontSize: 13, fontWeight: "800", letterSpacing: 0.3 },
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
 });

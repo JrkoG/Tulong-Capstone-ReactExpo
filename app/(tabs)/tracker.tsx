@@ -1,11 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-<<<<<<< HEAD
-import { Stack, useRouter } from 'expo-router';
-import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-=======
 import { Stack, useRouter } from "expo-router";
 import { onValue, ref, set } from "firebase/database";
 import { useEffect, useRef, useState } from "react";
@@ -13,7 +7,6 @@ import {
   ActivityIndicator,
   Linking,
   Platform,
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
   StatusBar,
   StyleSheet,
   Text,
@@ -22,9 +15,11 @@ import {
   View,
 } from "react-native";
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import QuickBar from "../../components/QuickBar";
 import { rtdb } from "../../config/firebase";
 import { useAuth } from "../../context/authContext";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 type GroupMember = { id: string; name: string; latitude: number; longitude: number; lastUpdated: number };
 type WearerDevice = { latitude: number; longitude: number; batteryLevel?: number; lastUpdated?: number } | null;
 
@@ -63,7 +58,8 @@ const markerStyles = StyleSheet.create({
   youInner: { width: 11, height: 11, borderRadius: 5.5, backgroundColor: "#4285F4" },
 });
 
-// Dark map style configuration
+// Dark map style configuration — makes the map itself look native-dark when
+// the app is in dark mode, instead of staying bright white underneath.
 const darkMapStyle = [
   { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
   { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
@@ -75,16 +71,6 @@ const darkMapStyle = [
 ];
 
 export default function TrackerScreen() {
-<<<<<<< HEAD
-  const router = useRouter();
-  const systemColorScheme = useColorScheme();
-  const isDark = systemColorScheme === 'dark';
-
-  const theme = {
-    background: isDark ? '#000000' : '#ffffff',
-    text: isDark ? '#ffffff' : '#111111',
-    brandGold: '#D0A97E',
-=======
   const { user } = useAuth();
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -108,7 +94,6 @@ export default function TrackerScreen() {
     subText: isDark ? "#8e8e93" : "#8e8e93",
     brandGold: "#D0A97E",
     warning: "#f59e0b",
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
   };
 
   const screenOptions = {
@@ -124,6 +109,7 @@ export default function TrackerScreen() {
     ),
   };
 
+  // ─── JOB 1: Broadcast MY live location ──────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -158,7 +144,7 @@ export default function TrackerScreen() {
             if (lastBroadcastedCoords.current) {
               const latDiff = Math.abs(lastBroadcastedCoords.current.latitude - latitude);
               const lngDiff = Math.abs(lastBroadcastedCoords.current.longitude - longitude);
-              
+
               if (latDiff < 0.00008 && lngDiff < 0.00008) {
                 shouldUpdate = false;
               }
@@ -187,17 +173,7 @@ export default function TrackerScreen() {
     };
   }, [user?.id]);
 
-<<<<<<< HEAD
-    startGPS();
-    return () => subscription?.remove();
-  }, []);
-
-  // 2. HARD-CODED WEARER LOCATION
-  useEffect(() => {
-    setWearerLocation({
-      latitude: 14.4589,
-      longitude: 120.9603,
-=======
+  // ─── JOB 2: Listen to ALL Group Members ─────────────────────────────────────
   useEffect(() => {
     const membersRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members`);
     return onValue(membersRef, (snapshot) => {
@@ -211,11 +187,11 @@ export default function TrackerScreen() {
     });
   }, [user?.id]);
 
+  // ─── JOB 3: Wearer IoT Device ───────────────────────────────────────────────
   useEffect(() => {
     const trackingRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/tracking`);
     return onValue(trackingRef, (snapshot) => {
       if (snapshot.exists()) setWearerDevice(snapshot.val());
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
     });
   }, []);
 
@@ -267,29 +243,12 @@ export default function TrackerScreen() {
       <Stack.Screen options={screenOptions} />
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
-<<<<<<< HEAD
-      <MapView
-        style={styles.map}
-        provider={PROVIDER_GOOGLE}
-        customMapStyle={isDark ? darkMapStyle : []} // Applies dark mode to map
-        initialRegion={{
-          latitude: location.latitude,
-          longitude: location.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        }}
-      >
-        <Marker 
-          coordinate={location} 
-          title="My Phone" 
-          description="Your current location"
-        />
-=======
       {myLocation ? (
         <MapView
           ref={mapRef}
           style={styles.map}
           provider={PROVIDER_GOOGLE}
+          customMapStyle={isDark ? darkMapStyle : []}
           initialRegion={{
             latitude: myLocation.latitude,
             longitude: myLocation.longitude,
@@ -307,15 +266,11 @@ export default function TrackerScreen() {
               strokeWidth={1.5}
             />
           )}
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
 
           <Marker coordinate={myLocation} title="You" description="Your live location" anchor={{ x: 0.5, y: 0.5 }}>
             <View collapsable={true}><YouMarker /></View>
           </Marker>
 
-<<<<<<< HEAD
-      <QuickBar />
-=======
           {wearerDevice?.latitude && wearerDevice?.longitude && (
             <Marker coordinate={{ latitude: wearerDevice.latitude, longitude: wearerDevice.longitude }} title="Wearer Device" description={`Battery: ${wearerDevice.batteryLevel ?? "Unknown"}%`} anchor={{ x: 0.5, y: 0.5 }}>
               <View collapsable={true}><WearerMarker /></View>
@@ -360,7 +315,8 @@ export default function TrackerScreen() {
           <Text style={[styles.hudText, { color: theme.text }]}>Recenter Circle</Text>
         </TouchableOpacity>
       </View>
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
+
+      <QuickBar />
     </View>
   );
 }
@@ -369,8 +325,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { width: "100%", height: "100%" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-<<<<<<< HEAD
-=======
   permissionBtn: { marginTop: 24, height: 52, paddingHorizontal: 32, borderRadius: 12, justifyContent: "center", alignItems: "center" },
   accuracyBanner: { position: "absolute", top: 0, left: 0, right: 0, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 16 },
   accuracyBannerText: { color: "#fff", fontSize: 12, fontWeight: "600" },
@@ -378,8 +332,9 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendLabel: { fontSize: 11, fontWeight: "600" },
-  hudContainer: { position: "absolute", bottom: Platform.OS === "ios" ? 40 : 20, left: 20, right: 20, alignItems: "center" },
+  // Bumped from 40/20 to 110/80 so the floating button sits above QuickBar
+  // instead of overlapping it (matches the offset pattern used in group.tsx).
+  hudContainer: { position: "absolute", bottom: Platform.OS === "ios" ? 110 : 80, left: 20, right: 20, alignItems: "center" },
   hudButton: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 30, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 },
   hudText: { fontWeight: "700", fontSize: 15 },
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
 });

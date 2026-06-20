@@ -16,6 +16,7 @@
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
+    "ci": "^2.3.0",
     "expo": "~54.0.35",
     "expo-av": "~16.0.8",
     "expo-constants": "~18.0.13",
@@ -28,11 +29,7 @@
     "expo-linking": "~8.0.11",
     "expo-location": "~19.0.8",
     "expo-notifications": "~0.32.17",
-<<<<<<< HEAD
-    "expo-router": "~6.0.23",
-=======
     "expo-router": "~6.0.24",
->>>>>>> 440591b6c2cbb438a22b44e13ba267368c7fc93a
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
