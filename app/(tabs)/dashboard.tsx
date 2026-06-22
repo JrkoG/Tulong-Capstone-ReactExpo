@@ -5,7 +5,7 @@ import { Stack, useRouter } from "expo-router";
 import * as TaskManager from "expo-task-manager";
 import { onValue, push, ref, set, update } from "firebase/database";
 import { collection, onSnapshot } from "firebase/firestore";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -28,7 +28,7 @@ import { useAuth } from "../../context/authContext";
 import { useAlertListener } from "../../hooks/useAlertListener";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Contact = { id: string; name: string; phone: string };
+type Contact = { id: string; name: string; phone: string; dialNumbers?: string[] };
 type AlertLog = {
   id: string;
   message: string;
@@ -50,6 +50,7 @@ type GroupMember = {
   latitude: number;
   longitude: number;
   lastUpdated: number;
+  accuracy?: number;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -434,16 +435,46 @@ export default function DashboardScreen() {
   const isStale = (lastUpdated: number) => Date.now() - lastUpdated > STALE_THRESHOLD_MS;
   const getMemberColor = (index: number) => MEMBER_COLORS[index % MEMBER_COLORS.length];
 
-  // Opens the native phone dialer with the contact's number pre-filled
-  const handleCall = (phone: string) => {
-    const cleaned = phone.replace(/[^0-9+]/g, ""); // strip spaces/dashes, keep digits and +
-    if (!cleaned) {
+  // Fallback for contacts saved before dialNumbers was added — does a
+  // lightweight version of the same cleanup so old entries still work.
+  const fallbackCleanNumber = (raw: string): string | null => {
+    const cleaned = raw.replace(/\([^)]*\)/g, '').split(/\bto\b/i)[0].split(/\blocal\b/i)[0];
+    const digits = cleaned.replace(/[^0-9+]/g, '');
+    return digits.length >= 3 ? digits : null;
+  };
+
+  const dialNumber = (number: string) => {
+    Linking.openURL(`tel:${number}`).catch(() => {
+      Alert.alert("Error", "Could not open the phone dialer on this device.");
+    });
+  };
+
+  // Opens the dialer with the contact's number. If a contact has multiple
+  // numbers saved (e.g. an agency hotline with several lines), shows a
+  // picker so the user chooses which one to call.
+  const handleCall = (contact: Contact) => {
+    const numbers = contact.dialNumbers?.length
+      ? contact.dialNumbers
+      : [fallbackCleanNumber(contact.phone)].filter((n): n is string => n !== null);
+
+    if (numbers.length === 0) {
       Alert.alert("Error", "This contact has no valid phone number.");
       return;
     }
-    Linking.openURL(`tel:${cleaned}`).catch(() => {
-      Alert.alert("Error", "Could not open the phone dialer on this device.");
-    });
+
+    if (numbers.length === 1) {
+      dialNumber(numbers[0]);
+      return;
+    }
+
+    Alert.alert(
+      `Call ${contact.name}`,
+      "This contact has multiple numbers. Choose one to dial:",
+      [
+        ...numbers.map((num) => ({ text: num, onPress: () => dialNumber(num) })),
+        { text: "Cancel", style: "cancel" as const },
+      ],
+    );
   };
 
   // Confirms before logging out, so a stray tap doesn't sign the user out
@@ -588,31 +619,55 @@ export default function DashboardScreen() {
                 </Marker>
 
                 {wearerLocation && (
-                  <Marker coordinate={wearerLocation} title="Wearer Device" anchor={{ x: 0.5, y: 0.5 }}>
-                    <View collapsable={true}><WearerMarker /></View>
-                  </Marker>
+                  <>
+                    {/* Fixed approximate range halo — the wearable hardware doesn't
+                        report a real GPS accuracy value, so this is a flat 20m
+                        visual indicator rather than a measured uncertainty radius. */}
+                    <Circle
+                      center={wearerLocation}
+                      radius={20}
+                      strokeColor="rgba(208, 169, 126, 0.5)"
+                      fillColor="rgba(208, 169, 126, 0.15)"
+                      strokeWidth={1.5}
+                    />
+                    <Marker coordinate={wearerLocation} title="Wearer Device" anchor={{ x: 0.5, y: 0.5 }}>
+                      <View collapsable={true}><WearerMarker /></View>
+                    </Marker>
+                  </>
                 )}
 
                 {groupMembers.map((member, index) => (
-                  <Marker
-                    key={member.id}
-                    coordinate={{ latitude: member.latitude, longitude: member.longitude }}
-                    title={member.name}
-                    description={
-                      isStale(member.lastUpdated)
-                        ? `⚠️ Location may be outdated`
-                        : `Updated ${new Date(member.lastUpdated).toLocaleTimeString()}`
-                    }
-                    anchor={{ x: 0.5, y: 0.5 }}
-                  >
-                    <View collapsable={true}>
-                      <MemberMarker
-                        name={member.name}
-                        color={getMemberColor(index)}
-                        isStale={isStale(member.lastUpdated)}
+                  <Fragment key={member.id}>
+                    {/* Only show halo when accuracy is poor — avoids visual clutter
+                        when a member has a precise fix */}
+                    {member.accuracy && member.accuracy > 20 && (
+                      <Circle
+                        center={{ latitude: member.latitude, longitude: member.longitude }}
+                        radius={member.accuracy}
+                        strokeColor={getMemberColor(index) + "66"}
+                        fillColor={getMemberColor(index) + "1A"}
+                        strokeWidth={1}
                       />
-                    </View>
-                  </Marker>
+                    )}
+                    <Marker
+                      coordinate={{ latitude: member.latitude, longitude: member.longitude }}
+                      title={member.name}
+                      description={
+                        isStale(member.lastUpdated)
+                          ? `⚠️ Location may be outdated`
+                          : `Updated ${new Date(member.lastUpdated).toLocaleTimeString()}`
+                      }
+                      anchor={{ x: 0.5, y: 0.5 }}
+                    >
+                      <View collapsable={true}>
+                        <MemberMarker
+                          name={member.name}
+                          color={getMemberColor(index)}
+                          isStale={isStale(member.lastUpdated)}
+                        />
+                      </View>
+                    </Marker>
+                  </Fragment>
                 ))}
               </MapView>
             ) : (
@@ -644,7 +699,7 @@ export default function DashboardScreen() {
                 </View>
                 <TouchableOpacity
                   style={[styles.callBtn, { backgroundColor: theme.brandGold }]}
-                  onPress={() => handleCall(contact.phone)}
+                  onPress={() => handleCall(contact)}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="call" size={18} color="#fff" />

@@ -1,90 +1,20 @@
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { auth, db } from "../config/firebase";
+import { Redirect } from 'expo-router';
+import { ActivityIndicator, View } from 'react-native';
+import { useAuth } from '../context/authContext';
 
-export default function App() {
-  const [connected, setConnected] = useState(false);
-  const router = useRouter();
+export default function Index() {
+  const { user, isLoadingAuth } = useAuth();
 
-  useEffect(() => {
-    // A much safer way to "test" connection is just ensuring the objects exist
-    const testConnection = () => {
-      if (auth && db) {
-        console.log("✅ Firebase initialized successfully!");
-        setConnected(true);
-      } else {
-        console.log("❌ Firebase failed to initialize.");
-      }
-    };
-    testConnection();
-  }, []);
-
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>C.A.R.E </Text>
-      <Text style={[styles.status, { color: connected ? "#4ade80" : "#f87171" }]}>
-        Firebase: {connected ? "✅ Connected" : "❌ Connecting..."}
-      </Text>
-
-      <View style={styles.btnGroup}>
-        <TouchableOpacity
-          style={styles.btnLogin}
-          onPress={() => router.push("/login")}
-        >
-          <Text style={styles.btnText}>Go to Login</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.btnRegister}
-          onPress={() => router.push("/register")}
-        >
-          <Text style={styles.btnText}>Go to Register</Text>
-        </TouchableOpacity>
+  // Wait for Firebase to resolve any persisted session before redirecting.
+  // Without this, a logged-in user could get bounced to /login during the
+  // brief window before onAuthStateChanged fires for the first time.
+  if (isLoadingAuth) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
       </View>
-    </View>
-  );
-}
+    );
+  }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#0d0d14",
-    gap: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#ffffff",
-    marginBottom: 4,
-  },
-  status: {
-    fontSize: 15,
-    marginBottom: 24,
-  },
-  btnGroup: {
-    width: "80%",
-    gap: 12,
-  },
-  btnLogin: {
-    backgroundColor: "#6366f1",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  btnRegister: {
-    backgroundColor: "transparent",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#6366f1",
-  },
-  btnText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-});
+  return <Redirect href={user ? '/(tabs)/dashboard' : '/(auth)/login'} />;
+}

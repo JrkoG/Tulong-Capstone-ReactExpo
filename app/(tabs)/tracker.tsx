@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { Stack, useRouter } from "expo-router";
 import { onValue, ref, set } from "firebase/database";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -20,7 +20,7 @@ import { rtdb } from "../../config/firebase";
 import { useAuth } from "../../context/authContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type GroupMember = { id: string; name: string; latitude: number; longitude: number; lastUpdated: number };
+type GroupMember = { id: string; name: string; latitude: number; longitude: number; lastUpdated: number; accuracy?: number };
 type WearerDevice = { latitude: number; longitude: number; batteryLevel?: number; lastUpdated?: number } | null;
 
 const HARDCODED_GROUP_ID = "qwi4UVJBinray0ZQm95e";
@@ -272,23 +272,47 @@ export default function TrackerScreen() {
           </Marker>
 
           {wearerDevice?.latitude && wearerDevice?.longitude && (
-            <Marker coordinate={{ latitude: wearerDevice.latitude, longitude: wearerDevice.longitude }} title="Wearer Device" description={`Battery: ${wearerDevice.batteryLevel ?? "Unknown"}%`} anchor={{ x: 0.5, y: 0.5 }}>
-              <View collapsable={true}><WearerMarker /></View>
-            </Marker>
+            <>
+              {/* Fixed approximate range halo — the wearable hardware doesn't
+                  report a real GPS accuracy value, so this is a flat 20m
+                  visual indicator rather than a measured uncertainty radius. */}
+              <Circle
+                center={{ latitude: wearerDevice.latitude, longitude: wearerDevice.longitude }}
+                radius={20}
+                strokeColor="rgba(208, 169, 126, 0.5)"
+                fillColor="rgba(208, 169, 126, 0.15)"
+                strokeWidth={1.5}
+              />
+              <Marker coordinate={{ latitude: wearerDevice.latitude, longitude: wearerDevice.longitude }} title="Wearer Device" description={`Battery: ${wearerDevice.batteryLevel ?? "Unknown"}%`} anchor={{ x: 0.5, y: 0.5 }}>
+                <View collapsable={true}><WearerMarker /></View>
+              </Marker>
+            </>
           )}
 
           {groupMembers.map((member, index) => (
-            <Marker
-              key={member.id}
-              coordinate={{ latitude: member.latitude, longitude: member.longitude }}
-              title={member.name}
-              description={isStale(member.lastUpdated) ? `⚠️ Last seen ${formatLastSeen(member.lastUpdated)}` : `Updated ${new Date(member.lastUpdated).toLocaleTimeString()}`}
-              anchor={{ x: 0.5, y: 0.5 }}
-            >
-              <View collapsable={true}>
-                <MemberMarker name={member.name} color={getMemberColor(index)} isStale={isStale(member.lastUpdated)} />
-              </View>
-            </Marker>
+            <Fragment key={member.id}>
+              {/* Only show halo when accuracy is poor — avoids visual clutter
+                  when a member has a precise fix */}
+              {member.accuracy && member.accuracy > 20 && (
+                <Circle
+                  center={{ latitude: member.latitude, longitude: member.longitude }}
+                  radius={member.accuracy}
+                  strokeColor={getMemberColor(index) + "66"}
+                  fillColor={getMemberColor(index) + "1A"}
+                  strokeWidth={1}
+                />
+              )}
+              <Marker
+                coordinate={{ latitude: member.latitude, longitude: member.longitude }}
+                title={member.name}
+                description={isStale(member.lastUpdated) ? `⚠️ Last seen ${formatLastSeen(member.lastUpdated)}` : `Updated ${new Date(member.lastUpdated).toLocaleTimeString()}`}
+                anchor={{ x: 0.5, y: 0.5 }}
+              >
+                <View collapsable={true}>
+                  <MemberMarker name={member.name} color={getMemberColor(index)} isStale={isStale(member.lastUpdated)} />
+                </View>
+              </Marker>
+            </Fragment>
           ))}
         </MapView>
       ) : (

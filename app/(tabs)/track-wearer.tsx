@@ -4,15 +4,16 @@ import { Stack, useRouter } from "expo-router";
 import { onValue, ref } from "firebase/database";
 import { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Linking,
-    Platform,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useColorScheme,
-    View,
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useColorScheme,
+  View,
 } from "react-native";
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { rtdb } from "../../config/firebase";
@@ -169,6 +170,29 @@ export default function TrackWearerScreen() {
     mapRef.current?.fitToCoordinates(coords, {
       edgePadding: { top: 100, right: 60, bottom: 100, left: 60 },
       animated: true,
+    });
+  };
+
+  // Opens the native Maps app with turn-by-turn directions to the wearer.
+  // Hands off to Apple Maps (iOS) or Google Maps app (Android) — no Directions
+  // API billing required. Falls back to the Google Maps web URL if the native
+  // scheme fails to open (e.g. no maps app installed).
+  const openDirections = () => {
+    if (!wearerDevice?.latitude || !wearerDevice?.longitude) {
+      Alert.alert("No Location", "Wearer's location is not available yet.");
+      return;
+    }
+    const { latitude, longitude } = wearerDevice;
+    const nativeUrl = Platform.select({
+      ios: `maps://app?daddr=${latitude},${longitude}`,
+      android: `google.navigation:q=${latitude},${longitude}`,
+    });
+    const webFallbackUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+
+    Linking.openURL(nativeUrl!).catch(() => {
+      Linking.openURL(webFallbackUrl).catch(() => {
+        Alert.alert("Error", "Could not open Maps for directions.");
+      });
     });
   };
 
@@ -418,6 +442,21 @@ export default function TrackWearerScreen() {
             ]}
           />
         </View>
+
+        {/* Get Directions — only shown once the wearer's location is known */}
+        {wearerDevice && (
+          <>
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <TouchableOpacity
+              style={[styles.directionsBtn, { backgroundColor: theme.brandGold }]}
+              onPress={openDirections}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="navigate" size={18} color="#fff" />
+              <Text style={styles.directionsBtnText}>Get Directions to Wearer</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </View>
   );
@@ -522,4 +561,14 @@ const styles = StyleSheet.create({
   infoSub: { fontSize: 11 },
   statusDot: { width: 9, height: 9, borderRadius: 4.5 },
   divider: { height: 1, marginVertical: 2 },
+  directionsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  directionsBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });
