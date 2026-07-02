@@ -284,6 +284,7 @@ export default function GroupScreen() {
   const [showJoin, setShowJoin] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [wearerName, setWearerName] = useState("");
+  const [deviceId, setDeviceId] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -585,19 +586,23 @@ export default function GroupScreen() {
 
   // ─── Create / Join Group ────────────────────────────────────────────────────
   const handleCreateGroup = async () => {
-    if (!groupName || !wearerName || !user?.id) {
-      Alert.alert("Error", "Please fill in all fields");
+    if (!groupName || !wearerName || !deviceId || !user?.id) {
+      Alert.alert("Error", "Please fill in all fields, including the Device ID from the wearable hardware.");
       return;
     }
     setActionLoading(true);
     try {
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const deviceId = "DEVICE_" + code;
+      // wearerId now stores the REAL hardware DEVICE_ID (e.g. "tracker-001")
+      // as typed in the Arduino sketch — not a randomly generated string.
+      // This is what lets the app find the correct devices/{id}/latest and
+      // gpsLogs/{id} paths that the ESP32 actually writes to.
+      const trimmedDeviceId = deviceId.trim();
       const groupRef = await addDoc(collection(db, "groups"), {
         name: groupName,
         wearerName,
         joinCode: code,
-        wearerId: deviceId,
+        wearerId: trimmedDeviceId,
         createdBy: user.id,
         createdAt: serverTimestamp(),
       });
@@ -610,7 +615,7 @@ export default function GroupScreen() {
       });
       await updateDoc(doc(db, "users", user.id), { groupId: groupRef.id });
       setupGroupListeners(groupRef.id);
-      Alert.alert("Success", `Group created! Device ID: ${deviceId}`);
+      Alert.alert("Success", `Group created! Linked to device: ${trimmedDeviceId}`);
     } catch {
       Alert.alert("Error", "Could not create group.");
     } finally {
@@ -818,6 +823,17 @@ export default function GroupScreen() {
                     value={wearerName}
                     onChangeText={setWearerName}
                   />
+                  <TextInput
+                    style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                    placeholder="Device ID (e.g. tracker-001)"
+                    placeholderTextColor={theme.subText}
+                    autoCapitalize="none"
+                    value={deviceId}
+                    onChangeText={setDeviceId}
+                  />
+                  <Text style={{ color: theme.subText, fontSize: 12, marginTop: -8, marginBottom: 12, paddingHorizontal: 4 }}>
+                    This must exactly match the DEVICE_ID defined in the wearable's Arduino code.
+                  </Text>
                   <TouchableOpacity
                     style={styles.primaryBtn}
                     onPress={handleCreateGroup}

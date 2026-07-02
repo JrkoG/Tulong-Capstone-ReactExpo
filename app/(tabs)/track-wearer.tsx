@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { Stack, useRouter } from "expo-router";
 import { onValue, ref } from "firebase/database";
+import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,10 +17,8 @@ import {
   View,
 } from "react-native";
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from "react-native-maps";
-import { rtdb } from "../../config/firebase";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const HARDCODED_GROUP_ID = "qwi4UVJBinray0ZQm95e";
+import { db, rtdb } from "../../config/firebase";
+import { useAuth } from "../../context/authContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type DeviceLocation = {
@@ -89,6 +88,7 @@ const markerStyles = StyleSheet.create({
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function TrackWearerScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const isDark = useColorScheme() === "dark";
   const mapRef = useRef<MapView>(null);
 
@@ -97,6 +97,9 @@ export default function TrackWearerScreen() {
   const [wearerDevice, setWearerDevice] = useState<WearerDevice>(null);
   const [loading, setLoading] = useState(true);
   const [permissionDenied, setPermissionDenied] = useState(false);
+
+  // The real hardware device ID, resolved from the user's group in Firestore.
+  const [wearerId, setWearerId] = useState<string | null>(null);
 
   const theme = {
     background: isDark ? "#000" : "#fff",
@@ -139,24 +142,48 @@ export default function TrackWearerScreen() {
     };
   }, []);
 
-  // ─── Wearer IoT Device ───────────────────────────────────────────────────────
+  // ─── Resolve the user's hardware device ID ───────────────────────────────────
   useEffect(() => {
-    const trackingRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/tracking`);
-    return onValue(trackingRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        if (data?.latitude && data?.longitude) {
-          if (data.latitude === 0 && data.longitude === 0) return;
-          setWearerDevice({
-            latitude: data.latitude,
-            longitude: data.longitude,
-            batteryLevel: data.batteryLevel,
-            lastUpdated: data.lastUpdated,
-          });
+    if (!user?.id) return;
+    const fetchGroup = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, "users", user.id));
+        const gId = userDoc.exists() ? userDoc.data().groupId : null;
+        if (!gId) return;
+
+        const groupDoc = await getDoc(doc(db, "groups", gId));
+        if (groupDoc.exists()) {
+          setWearerId(groupDoc.data().wearerId ?? null);
         }
+      } catch (e) {
+        console.error("Error resolving device:", e);
+      }
+    };
+    fetchGroup();
+  }, [user?.id]);
+
+  // ─── Wearer IoT Device ───────────────────────────────────────────────────────
+  // Reads devices/{wearerId}/latest — the actual path the ESP32 writes to.
+  // lat/lng can arrive as empty strings "" before the device gets a GPS fix,
+  // so Number(...) + truthy check guards against plotting a false (0,0).
+  useEffect(() => {
+    if (!wearerId) return;
+    const latestRef = ref(rtdb, `devices/${wearerId}/latest`);
+    return onValue(latestRef, (snapshot) => {
+      if (!snapshot.exists()) return;
+      const data = snapshot.val();
+      const lat = Number(data.lat);
+      const lng = Number(data.lng);
+      if (lat && lng) {
+        setWearerDevice({
+          latitude: lat,
+          longitude: lng,
+          batteryLevel: data.batteryLevel,
+          lastUpdated: data.serverTime,
+        });
       }
     });
-  }, []);
+  }, [wearerId]);
 
   // ─── Fit both markers in view ─────────────────────────────────────────────
   const fitBothInView = () => {

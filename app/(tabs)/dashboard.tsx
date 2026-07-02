@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
 import * as TaskManager from "expo-task-manager";
 import { onValue, push, ref, set, update } from "firebase/database";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot } from "firebase/firestore";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -55,11 +56,15 @@ type GroupMember = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const LOCATION_TASK_NAME = "background-location-task";
-const HARDCODED_GROUP_ID = "qwi4UVJBinray0ZQm95e";
+const GROUP_ID_STORAGE_KEY = "care:activeGroupId";
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 const MEMBER_COLORS = ["#4ade80", "#60a5fa", "#f472b6", "#a78bfa", "#fb923c"];
 
 // ─── Background Task ──────────────────────────────────────────────────────────
+// This runs at module scope, completely outside React — it cannot read
+// component state directly, so the active groupId is read from AsyncStorage
+// instead (written by the component below whenever it resolves the user's
+// real group).
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
     console.error("Background Location Error:", error);
@@ -72,10 +77,11 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
       const { latitude, longitude } = location.coords;
       try {
         const currentUser = auth.currentUser;
-        if (currentUser?.uid) {
+        const storedGroupId = await AsyncStorage.getItem(GROUP_ID_STORAGE_KEY);
+        if (currentUser?.uid && storedGroupId) {
           const myLocationRef = ref(
             rtdb,
-            `groups/${HARDCODED_GROUP_ID}/members/${currentUser.uid}`,
+            `groups/${storedGroupId}/members/${currentUser.uid}`,
           );
           await update(myLocationRef, {
             latitude,
@@ -200,6 +206,17 @@ export default function DashboardScreen() {
   const [isSending, setIsSending] = useState(false);
   const [currentModalAlert, setCurrentModalAlert] = useState<AlertLog | null>(null);
 
+  // The real group + hardware device ID, fetched from Firestore — replaces
+  // the old hardcoded constant so this screen works for ANY group/device,
+  // not just one test group.
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [wearerId, setWearerId] = useState<string | null>(null);
+
+  // Tracks button-press log IDs already turned into an alert, so the same
+  // hardware press never creates a duplicate SOS entry if this listener
+  // re-fires (tab switch, reconnect, etc.)
+  const processedButtonLogIds = useRef<Set<string>>(new Set());
+
   // Track movement state and last broadcasted coords to prevent jitter
   const isMovingRef = useRef(false);
   const lastBroadcastedCoords = useRef<DeviceLocation>(null);
@@ -215,6 +232,10 @@ export default function DashboardScreen() {
   };
 
   const handleManualSOS = () => {
+    if (!groupId) {
+      Alert.alert("Error", "No group found. Please join or create a group first.");
+      return;
+    }
     Alert.alert(
       "Confirm Emergency",
       "Are you sure you want to notify all guardians with an SOS alert?",
@@ -227,7 +248,7 @@ export default function DashboardScreen() {
             if (isSending) return;
             setIsSending(true);
             try {
-              const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
+              const alertsRef = ref(rtdb, `groups/${groupId}/alerts`);
               await push(alertsRef, {
                 message: `Manual App SOS triggered by ${user?.email || "Guardian"}`,
                 timestamp: Date.now(),
@@ -250,9 +271,31 @@ export default function DashboardScreen() {
     );
   };
 
-  // ─── JOB 1: Foreground + Background Location Tracking ────────────────────────
+  // ─── JOB 0: Resolve the user's real group + hardware device ID ──────────────
   useEffect(() => {
     if (!user?.id) return;
+    const fetchGroup = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, "users", user.id));
+        const gId = userDoc.exists() ? userDoc.data().groupId : null;
+        if (!gId) return;
+        setGroupId(gId);
+        await AsyncStorage.setItem(GROUP_ID_STORAGE_KEY, gId);
+
+        const groupDoc = await getDoc(doc(db, "groups", gId));
+        if (groupDoc.exists()) {
+          setWearerId(groupDoc.data().wearerId ?? null);
+        }
+      } catch (e) {
+        console.error("Error resolving group/device:", e);
+      }
+    };
+    fetchGroup();
+  }, [user?.id]);
+
+  // ─── JOB 1: Foreground + Background Location Tracking ────────────────────────
+  useEffect(() => {
+    if (!user?.id || !groupId) return;
     let locationSubscription: Location.LocationSubscription | null = null;
 
     const setupLiveTracking = async () => {
@@ -298,7 +341,7 @@ export default function DashboardScreen() {
             if (shouldUpdate) {
               lastBroadcastedCoords.current = { latitude, longitude, accuracy: currentAccuracy };
               
-              const myLocationRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members/${user.id}`);
+              const myLocationRef = ref(rtdb, `groups/${groupId}/members/${user.id}`);
               set(myLocationRef, {
                 name: user.email?.split("@")[0] || "Group Member",
                 latitude,
@@ -339,11 +382,12 @@ export default function DashboardScreen() {
         },
       );
     };
-  }, [user?.id]);
+  }, [user?.id, groupId]);
 
   // ─── JOB 2: Group Members Live Feed ─────────────────────────────────────────
   useEffect(() => {
-    const membersRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members`);
+    if (!groupId) return;
+    const membersRef = ref(rtdb, `groups/${groupId}/members`);
     return onValue(membersRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
@@ -355,33 +399,89 @@ export default function DashboardScreen() {
         setGroupMembers([]);
       }
     });
-  }, [user?.id]);
+  }, [user?.id, groupId]);
 
   // ─── JOB 3: Wearable Device Status ───────────────────────────────────────────
+  // Reads from devices/{wearerId}/latest — the path the ESP32 sketch actually
+  // writes to on every GPS update (see FirebaseRTDB.h writeLatest()).
+  // Field names match the sketch's JSON exactly: lat/lng (not latitude/
+  // longitude), and serverTime for the timestamp.
   useEffect(() => {
-    const trackingRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/tracking`);
-    return onValue(trackingRef, (snapshot) => {
+    if (!wearerId) return;
+    const latestRef = ref(rtdb, `devices/${wearerId}/latest`);
+    return onValue(latestRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
         setDeviceStatus({
-          battery: data.batteryLevel || 100,
-          signal: "Strong",
-          lastSeen:
-            data.lastUpdated || data.serverTime
-              ? new Date(data.lastUpdated || data.serverTime).toLocaleTimeString()
-              : "Just now",
+          battery: data.batteryLevel ?? 100,
+          signal: data.transport === "wifi" ? "WiFi" : data.transport ? "Cellular" : "Strong",
+          lastSeen: data.serverTime
+            ? new Date(data.serverTime).toLocaleTimeString()
+            : "Just now",
         });
-        if (data.latitude && data.longitude) {
-          if (data.latitude === 0 && data.longitude === 0) return;
-          setWearerLocation({ latitude: data.latitude, longitude: data.longitude });
+
+        // lat/lng can be empty strings "" when the ESP32 hasn't gotten a GPS
+        // fix yet (confirmed from real Firebase data) — Number("") is 0, so
+        // this guard is required to avoid plotting a false (0,0) marker.
+        const lat = Number(data.lat);
+        const lng = Number(data.lng);
+        if (lat && lng) {
+          setWearerLocation({ latitude: lat, longitude: lng });
         }
       }
     });
-  }, []);
+  }, [wearerId]);
+
+  // ─── JOB 3.5: Hardware SOS Button Bridge ─────────────────────────────────────
+  // The ESP32 logs a button press to gpsLogs/{wearerId}/{autoId} with
+  // reason: "button" — it does NOT write directly to groups/{groupId}/alerts.
+  // This listener watches for new button-press log entries and bridges them
+  // into the app's existing alert system, which is what makes SOSModal (and
+  // the GuardianResponseModal flow in _layout.tsx) actually fire.
+  useEffect(() => {
+    if (!wearerId || !groupId) return;
+    const gpsLogsRef = ref(rtdb, `gpsLogs/${wearerId}`);
+
+    return onValue(gpsLogsRef, (snapshot) => {
+      if (!snapshot.exists()) return;
+      const data = snapshot.val();
+
+      Object.keys(data).forEach((logId) => {
+        const entry = data[logId];
+        if (entry.reason !== "button") return;
+        if (processedButtonLogIds.current.has(logId)) return;
+
+        // Only bridge RECENT button presses (last 2 minutes) — prevents
+        // replaying old historical gpsLogs entries as fresh alerts every
+        // time this listener re-subscribes (tab switch, reconnect, etc.)
+        const entryTime = entry.serverTime ?? 0;
+        const isRecent = Date.now() - entryTime < 2 * 60 * 1000;
+        if (!isRecent) {
+          processedButtonLogIds.current.add(logId);
+          return;
+        }
+
+        processedButtonLogIds.current.add(logId);
+
+        const lat = Number(entry.lat);
+        const lng = Number(entry.lng);
+
+        push(ref(rtdb, `groups/${groupId}/alerts`), {
+          message: "Hardware Emergency Button Pressed!",
+          timestamp: entryTime || Date.now(),
+          pushNotified: false,
+          latitude: lat || null,
+          longitude: lng || null,
+          triggeredBy: null, // hardware-triggered — no app user to suppress the modal for
+        }).catch((e) => console.error("Failed to bridge button press to alerts:", e));
+      });
+    });
+  }, [wearerId, groupId]);
 
   // ─── JOB 4: Alerts Listener ───────────────────────────────────────────────────
   useEffect(() => {
-    const alertsRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/alerts`);
+    if (!groupId) return;
+    const alertsRef = ref(rtdb, `groups/${groupId}/alerts`);
     return onValue(alertsRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
@@ -422,7 +522,7 @@ export default function DashboardScreen() {
         setAlerts([...list].reverse().slice(0, 5) as AlertLog[]);
       }
     });
-  }, []);
+  }, [groupId]);
 
   // ─── JOB 5: Emergency Contacts ───────────────────────────────────────────────
   useEffect(() => {

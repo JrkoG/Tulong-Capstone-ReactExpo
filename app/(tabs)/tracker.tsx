@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { Stack, useRouter } from "expo-router";
 import { onValue, ref, set } from "firebase/database";
+import { doc, getDoc } from "firebase/firestore";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,14 +17,13 @@ import {
 } from "react-native";
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import QuickBar from "../../components/QuickBar";
-import { rtdb } from "../../config/firebase";
+import { db, rtdb } from "../../config/firebase";
 import { useAuth } from "../../context/authContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type GroupMember = { id: string; name: string; latitude: number; longitude: number; lastUpdated: number; accuracy?: number };
 type WearerDevice = { latitude: number; longitude: number; batteryLevel?: number; lastUpdated?: number } | null;
 
-const HARDCODED_GROUP_ID = "qwi4UVJBinray0ZQm95e";
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 const MEMBER_COLORS = ["#4ade80", "#60a5fa", "#f472b6", "#a78bfa", "#fb923c"];
 
@@ -87,6 +87,10 @@ export default function TrackerScreen() {
   const isMovingRef = useRef(false);
   const lastBroadcastedCoords = useRef<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
 
+  // The real group + hardware device ID, resolved from Firestore.
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [wearerId, setWearerId] = useState<string | null>(null);
+
   const theme = {
     background: isDark ? "#000" : "#fff",
     text: isDark ? "#fff" : "#111",
@@ -109,9 +113,30 @@ export default function TrackerScreen() {
     ),
   };
 
-  // ─── JOB 1: Broadcast MY live location ──────────────────────────────────────
+  // ─── JOB 0: Resolve the user's real group + hardware device ID ──────────────
   useEffect(() => {
     if (!user?.id) return;
+    const fetchGroup = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, "users", user.id));
+        const gId = userDoc.exists() ? userDoc.data().groupId : null;
+        if (!gId) return;
+        setGroupId(gId);
+
+        const groupDoc = await getDoc(doc(db, "groups", gId));
+        if (groupDoc.exists()) {
+          setWearerId(groupDoc.data().wearerId ?? null);
+        }
+      } catch (e) {
+        console.error("Error resolving group/device:", e);
+      }
+    };
+    fetchGroup();
+  }, [user?.id]);
+
+  // ─── JOB 1: Broadcast MY live location ──────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id || !groupId) return;
     let locationSubscription: Location.LocationSubscription | null = null;
 
     (async () => {
@@ -152,7 +177,7 @@ export default function TrackerScreen() {
 
             if (shouldUpdate) {
               lastBroadcastedCoords.current = { latitude, longitude, accuracy: currentAccuracy };
-              const myLocationRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members/${user.id}`);
+              const myLocationRef = ref(rtdb, `groups/${groupId}/members/${user.id}`);
               set(myLocationRef, {
                 name: user.email?.split("@")[0] || "Group Member",
                 latitude,
@@ -171,11 +196,12 @@ export default function TrackerScreen() {
     return () => {
       if (locationSubscription) locationSubscription.remove();
     };
-  }, [user?.id]);
+  }, [user?.id, groupId]);
 
   // ─── JOB 2: Listen to ALL Group Members ─────────────────────────────────────
   useEffect(() => {
-    const membersRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/members`);
+    if (!groupId) return;
+    const membersRef = ref(rtdb, `groups/${groupId}/members`);
     return onValue(membersRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
@@ -185,15 +211,30 @@ export default function TrackerScreen() {
         setGroupMembers([]);
       }
     });
-  }, [user?.id]);
+  }, [user?.id, groupId]);
 
   // ─── JOB 3: Wearer IoT Device ───────────────────────────────────────────────
+  // Reads devices/{wearerId}/latest — the actual path the ESP32 writes to.
+  // Field names match the sketch: lat/lng, batteryLevel may be absent since
+  // the sample JSON in the sketch doesn't include it (only deviceStatus does).
   useEffect(() => {
-    const trackingRef = ref(rtdb, `groups/${HARDCODED_GROUP_ID}/tracking`);
-    return onValue(trackingRef, (snapshot) => {
-      if (snapshot.exists()) setWearerDevice(snapshot.val());
+    if (!wearerId) return;
+    const latestRef = ref(rtdb, `devices/${wearerId}/latest`);
+    return onValue(latestRef, (snapshot) => {
+      if (!snapshot.exists()) return;
+      const data = snapshot.val();
+      const lat = Number(data.lat);
+      const lng = Number(data.lng);
+      if (lat && lng) {
+        setWearerDevice({
+          latitude: lat,
+          longitude: lng,
+          batteryLevel: data.batteryLevel,
+          lastUpdated: data.serverTime,
+        });
+      }
     });
-  }, []);
+  }, [wearerId]);
 
   const isStale = (lastUpdated: number) => Date.now() - lastUpdated > STALE_THRESHOLD_MS;
   const getMemberColor = (index: number) => MEMBER_COLORS[index % MEMBER_COLORS.length];
