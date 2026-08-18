@@ -34,6 +34,17 @@ type WearerDevice = {
   lastUpdated?: number;
 } | null;
 
+// ─── Module-level location cache ──────────────────────────────────────────────
+// Lives OUTSIDE the component so it survives remounts (tab switches). GPS
+// needs a moment to "warm up" on every fresh watchPositionAsync call, which
+// caused the map to briefly flicker/show a loading state each time this
+// screen remounted. By caching the last known position and wearer location
+// here, a remount can render immediately with the last-known state while a
+// fresh GPS fix comes in quietly in the background.
+let _lastKnownMyLocation: DeviceLocation = null;
+let _lastKnownAccuracy: number | null = null;
+let _lastKnownWearerDevice: WearerDevice = null;
+
 // ─── Custom Markers ───────────────────────────────────────────────────────────
 function YouMarker() {
   return (
@@ -92,10 +103,14 @@ export default function TrackWearerScreen() {
   const isDark = useColorScheme() === "dark";
   const mapRef = useRef<MapView>(null);
 
-  const [myLocation, setMyLocation] = useState<DeviceLocation>(null);
-  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
-  const [wearerDevice, setWearerDevice] = useState<WearerDevice>(null);
-  const [loading, setLoading] = useState(true);
+  // Initialized from the module-level cache (if any) so a remount shows the
+  // last-known state immediately instead of a blank map / loading spinner.
+  const [myLocation, setMyLocation] = useState<DeviceLocation>(_lastKnownMyLocation);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(_lastKnownAccuracy);
+  const [wearerDevice, setWearerDevice] = useState<WearerDevice>(_lastKnownWearerDevice);
+  // Skip the full-screen loading spinner if we already have a cached
+  // position from a previous mount this session.
+  const [loading, setLoading] = useState(_lastKnownMyLocation === null);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
   // The real hardware device ID, resolved from the user's group in Firestore.
@@ -133,6 +148,11 @@ export default function TrackWearerScreen() {
           setMyLocation({ latitude, longitude, accuracy: accuracy ?? 999 });
           setLocationAccuracy(accuracy ?? null);
           setLoading(false);
+
+          // Keep the module-level cache current so the NEXT remount of this
+          // screen starts from this fresh position instead of stale data.
+          _lastKnownMyLocation = { latitude, longitude, accuracy: accuracy ?? 999 };
+          _lastKnownAccuracy = accuracy ?? null;
         },
       );
     })();
@@ -175,12 +195,14 @@ export default function TrackWearerScreen() {
       const lat = Number(data.lat);
       const lng = Number(data.lng);
       if (lat && lng) {
-        setWearerDevice({
+        const wearerData = {
           latitude: lat,
           longitude: lng,
           batteryLevel: data.batteryLevel,
           lastUpdated: data.serverTime,
-        });
+        };
+        setWearerDevice(wearerData);
+        _lastKnownWearerDevice = wearerData; // cache for the next remount
       }
     });
   }, [wearerId]);

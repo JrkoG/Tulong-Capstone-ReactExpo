@@ -27,6 +27,18 @@ type WearerDevice = { latitude: number; longitude: number; batteryLevel?: number
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 const MEMBER_COLORS = ["#4ade80", "#60a5fa", "#f472b6", "#a78bfa", "#fb923c"];
 
+// ─── Module-level location cache ──────────────────────────────────────────────
+// Lives OUTSIDE the component so it survives remounts (tab switches). GPS
+// needs a moment to "warm up" on every fresh watchPositionAsync call, which
+// is what caused the map to briefly flicker/show a loading state each time
+// this screen remounted. By caching the last known position and wearer
+// location here, a remount can render immediately with the last-known state
+// while a fresh GPS fix comes in quietly in the background — instead of
+// showing a blank/loading map every single time.
+let _lastKnownMyLocation: { latitude: number; longitude: number } | null = null;
+let _lastKnownAccuracy: number | null = null;
+let _lastKnownWearerDevice: WearerDevice = null;
+
 function YouMarker() {
   return (
     <View style={markerStyles.youOuter}>
@@ -77,11 +89,15 @@ export default function TrackerScreen() {
   const isDark = colorScheme === "dark";
   const mapRef = useRef<MapView>(null);
 
-  const [myLocation, setMyLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
+  // Initialized from the module-level cache (if any) so a remount shows the
+  // last-known state immediately instead of a blank map / loading spinner.
+  const [myLocation, setMyLocation] = useState<{ latitude: number; longitude: number } | null>(_lastKnownMyLocation);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(_lastKnownAccuracy);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
-  const [wearerDevice, setWearerDevice] = useState<WearerDevice>(null);
-  const [loading, setLoading] = useState(true);
+  const [wearerDevice, setWearerDevice] = useState<WearerDevice>(_lastKnownWearerDevice);
+  // Skip the full-screen "Syncing Circle Maps..." loader if we already have
+  // a cached position from a previous mount this session.
+  const [loading, setLoading] = useState(_lastKnownMyLocation === null);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
   const isMovingRef = useRef(false);
@@ -163,6 +179,11 @@ export default function TrackerScreen() {
           setLoading(false);
           isMovingRef.current = currentSpeed > 0.5;
 
+          // Keep the module-level cache current so the NEXT remount of this
+          // screen starts from this fresh position instead of stale data.
+          _lastKnownMyLocation = { latitude, longitude };
+          _lastKnownAccuracy = currentAccuracy;
+
           if (currentAccuracy <= 35) {
             let shouldUpdate = true;
 
@@ -226,12 +247,14 @@ export default function TrackerScreen() {
       const lat = Number(data.lat);
       const lng = Number(data.lng);
       if (lat && lng) {
-        setWearerDevice({
+        const wearerData = {
           latitude: lat,
           longitude: lng,
           batteryLevel: data.batteryLevel,
           lastUpdated: data.serverTime,
-        });
+        };
+        setWearerDevice(wearerData);
+        _lastKnownWearerDevice = wearerData; // cache for the next remount
       }
     });
   }, [wearerId]);
