@@ -57,8 +57,70 @@ type GroupMember = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const LOCATION_TASK_NAME = "background-location-task";
 const GROUP_ID_STORAGE_KEY = "care:activeGroupId";
+const DISMISSED_ALERTS_STORAGE_KEY = "care:dismissedSOSAlerts";
+const DISMISSED_ALERTS_MAX_AGE_MS = 24 * 60 * 60 * 1000; // prune entries older than 24h
+const DISMISSED_ALERTS_MAX_COUNT = 50; // safety cap against unbounded growth
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 const MEMBER_COLORS = ["#4ade80", "#60a5fa", "#f472b6", "#a78bfa", "#fb923c"];
+
+// ─── Module-level session state ───────────────────────────────────────────────
+// In-memory cache for fast synchronous checks inside JOB 4's onValue callback.
+// Backed by AsyncStorage (see below) so dismissals also survive a full app
+// restart — not just tab switches within the same session.
+const _dismissedAlertIds = new Set<string>();
+
+// Cached promise so hydrateDismissedAlerts() only actually touches AsyncStorage
+// once per app session — every dashboard remount after the first just awaits
+// the same already-resolved promise, which returns instantly.
+let _hydrationPromise: Promise<void> | null = null;
+
+// Loads previously-dismissed alert IDs from disk into the in-memory Set.
+// Prunes entries older than 24h (and caps total count) so this storage key
+// never grows without bound over the lifetime of the app install.
+function hydrateDismissedAlerts(): Promise<void> {
+  if (_hydrationPromise) return _hydrationPromise;
+
+  _hydrationPromise = (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(DISMISSED_ALERTS_STORAGE_KEY);
+      if (!raw) return;
+
+      const parsed: { id: string; dismissedAt: number }[] = JSON.parse(raw);
+      const cutoff = Date.now() - DISMISSED_ALERTS_MAX_AGE_MS;
+      const fresh = parsed
+        .filter((entry) => entry.dismissedAt > cutoff)
+        .slice(-DISMISSED_ALERTS_MAX_COUNT);
+
+      fresh.forEach((entry) => _dismissedAlertIds.add(entry.id));
+
+      // Write back the pruned list so old entries don't linger on disk forever
+      if (fresh.length !== parsed.length) {
+        await AsyncStorage.setItem(DISMISSED_ALERTS_STORAGE_KEY, JSON.stringify(fresh));
+      }
+    } catch (e) {
+      console.error("Failed to hydrate dismissed alerts:", e);
+    }
+  })();
+
+  return _hydrationPromise;
+}
+
+// Persists one newly-dismissed alert ID to disk. Called fire-and-forget from
+// the UI (the modal closes immediately; this write happens in the background).
+async function persistDismissedAlert(id: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(DISMISSED_ALERTS_STORAGE_KEY);
+    const existing: { id: string; dismissedAt: number }[] = raw ? JSON.parse(raw) : [];
+
+    const updated = [...existing, { id, dismissedAt: Date.now() }].slice(
+      -DISMISSED_ALERTS_MAX_COUNT,
+    );
+
+    await AsyncStorage.setItem(DISMISSED_ALERTS_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.error("Failed to persist dismissed alert:", e);
+  }
+}
 
 // ─── Background Task ──────────────────────────────────────────────────────────
 // This runs at module scope, completely outside React — it cannot read
@@ -481,48 +543,79 @@ export default function DashboardScreen() {
   // ─── JOB 4: Alerts Listener ───────────────────────────────────────────────────
   useEffect(() => {
     if (!groupId) return;
-    const alertsRef = ref(rtdb, `groups/${groupId}/alerts`);
-    return onValue(alertsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const list = Object.keys(data).map((key) => {
-          const item = data[key];
-          return {
-            id: key,
-            message:
-              item.message ||
-              (item.reason === "button" ? "Hardware Emergency Button Pressed!" : item.reason) ||
-              "SOS Emergency Triggered",
-            timestamp: item.timestamp || item.serverTime || Date.now(),
-            pushNotified: item.pushNotified || false,
-            latitude: item.latitude !== undefined ? item.latitude : item.lat,
-            longitude: item.longitude !== undefined ? item.longitude : item.lng,
-            currentStatus: item.currentStatus,
-            lastResponderName: item.lastResponderName,
-            lastResponderId: item.lastResponderId,
-            lastUpdateAt: item.lastUpdateAt,
-            triggeredBy: item.triggeredBy,
-          };
-        });
 
-        const latestAlert = list[list.length - 1] as AlertLog;
-        const threeMinutesAgo = Date.now() - 3 * 60 * 1000;
-        const alertTime =
-          typeof latestAlert.timestamp === "number"
-            ? latestAlert.timestamp
-            : Date.now();
+    // Track whether this effect instance is still active — guards against
+    // setting up the RTDB listener after a fast unmount (e.g. rapid tab
+    // switching) while the hydration await below is still in flight.
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
 
-        if (latestAlert && alertTime > threeMinutesAgo) {
-          // Don't show SOSModal to the person who triggered the alert — they already know
-          if (latestAlert.triggeredBy !== user?.id) {
-            setCurrentModalAlert(latestAlert);
+    (async () => {
+      // Wait for previously-dismissed alert IDs to load from disk BEFORE
+      // subscribing to RTDB at all. This closes the race condition where the
+      // very first onValue fire could otherwise happen before AsyncStorage
+      // finishes reading, showing a modal that should have stayed dismissed.
+      // hydrateDismissedAlerts() only hits disk once per app session — every
+      // later call (e.g. next tab switch back to Dashboard) resolves
+      // instantly from the cached promise.
+      await hydrateDismissedAlerts();
+      if (cancelled) return;
+
+      const alertsRef = ref(rtdb, `groups/${groupId}/alerts`);
+      unsubscribe = onValue(alertsRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          const list = Object.keys(data).map((key) => {
+            const item = data[key];
+            return {
+              id: key,
+              message:
+                item.message ||
+                (item.reason === "button" ? "Hardware Emergency Button Pressed!" : item.reason) ||
+                "SOS Emergency Triggered",
+              timestamp: item.timestamp || item.serverTime || Date.now(),
+              pushNotified: item.pushNotified || false,
+              latitude: item.latitude !== undefined ? item.latitude : item.lat,
+              longitude: item.longitude !== undefined ? item.longitude : item.lng,
+              currentStatus: item.currentStatus,
+              lastResponderName: item.lastResponderName,
+              lastResponderId: item.lastResponderId,
+              lastUpdateAt: item.lastUpdateAt,
+              triggeredBy: item.triggeredBy,
+            };
+          });
+
+          const latestAlert = list[list.length - 1] as AlertLog;
+          const threeMinutesAgo = Date.now() - 3 * 60 * 1000;
+          const alertTime =
+            typeof latestAlert.timestamp === "number"
+              ? latestAlert.timestamp
+              : Date.now();
+
+          if (latestAlert && alertTime > threeMinutesAgo) {
+            // Don't show SOSModal to the person who triggered the alert —
+            // they already know. Also skip if this exact alert ID was
+            // already dismissed — whether that happened moments ago on
+            // another tab, or in a previous session entirely (this check
+            // is now backed by AsyncStorage, not just in-memory state).
+            if (
+              latestAlert.triggeredBy !== user?.id &&
+              !_dismissedAlertIds.has(latestAlert.id)
+            ) {
+              setCurrentModalAlert(latestAlert);
+            }
           }
-        }
 
-        setAlerts([...list].reverse().slice(0, 5) as AlertLog[]);
-      }
-    });
-  }, [groupId]);
+          setAlerts([...list].reverse().slice(0, 5) as AlertLog[]);
+        }
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [groupId, user?.id]);
 
   // ─── JOB 5: Emergency Contacts ───────────────────────────────────────────────
   useEffect(() => {
@@ -534,6 +627,22 @@ export default function DashboardScreen() {
 
   const isStale = (lastUpdated: number) => Date.now() - lastUpdated > STALE_THRESHOLD_MS;
   const getMemberColor = (index: number) => MEMBER_COLORS[index % MEMBER_COLORS.length];
+
+  // Called when the user taps "Okay" on the SOSModal. Records this specific
+  // alert's ID in the in-memory Set immediately (so it's gone for the rest of
+  // this tab-switching session right away), then writes it to AsyncStorage in
+  // the background (fire-and-forget — the modal doesn't wait on disk I/O) so
+  // the dismissal also survives a full app restart, not just a remount.
+  const handleDismissSOS = () => {
+    if (currentModalAlert?.id) {
+      const dismissedId = currentModalAlert.id;
+      _dismissedAlertIds.add(dismissedId);
+      persistDismissedAlert(dismissedId).catch((e) =>
+        console.error("Failed to persist SOS dismissal:", e),
+      );
+    }
+    setCurrentModalAlert(null);
+  };
 
   // Fallback for contacts saved before dialNumbers was added — does a
   // lightweight version of the same cleanup so old entries still work.
@@ -836,7 +945,7 @@ export default function DashboardScreen() {
             ? { latitude: currentModalAlert.latitude, longitude: currentModalAlert.longitude }
             : undefined
         }
-        onDismiss={() => setCurrentModalAlert(null)}
+        onDismiss={handleDismissSOS}
       />
     </View>
   );
