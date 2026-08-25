@@ -503,44 +503,50 @@ export default function DashboardScreen() {
   // into the app's existing alert system, which is what makes SOSModal (and
   // the GuardianResponseModal flow in _layout.tsx) actually fire.
   useEffect(() => {
-    if (!wearerId || !groupId) return;
-    const gpsLogsRef = ref(rtdb, `gpsLogs/${wearerId}`);
+  if (!wearerId || !groupId) return;
+  const gpsLogsRef = ref(rtdb, `gpsLogs/${wearerId}`);
 
-    return onValue(gpsLogsRef, (snapshot) => {
-      if (!snapshot.exists()) return;
-      const data = snapshot.val();
+  return onValue(gpsLogsRef, (snapshot) => {
+    if (!snapshot.exists()) return;
+    const data = snapshot.val();
 
-      Object.keys(data).forEach((logId) => {
-        const entry = data[logId];
-        if (entry.reason !== "button") return;
-        if (processedButtonLogIds.current.has(logId)) return;
+    Object.keys(data).forEach((logId) => {
+      const entry = data[logId];
+      const reason = entry.reason ? String(entry.reason).toLowerCase() : "";
 
-        // Only bridge RECENT button presses (last 2 minutes) — prevents
-        // replaying old historical gpsLogs entries as fresh alerts every
-        // time this listener re-subscribes (tab switch, reconnect, etc.)
-        const entryTime = entry.serverTime ?? 0;
-        const isRecent = Date.now() - entryTime < 2 * 60 * 1000;
-        if (!isRecent) {
-          processedButtonLogIds.current.add(logId);
-          return;
-        }
+      // Allow both "button" presses AND "fall" detections from hardware
+      if (reason !== "button" && reason !== "fall") return;
+      if (processedButtonLogIds.current.has(logId)) return;
 
+      const entryTime = entry.serverTime ?? 0;
+      const isRecent = Date.now() - entryTime < 2 * 60 * 1000;
+      if (!isRecent) {
         processedButtonLogIds.current.add(logId);
+        return;
+      }
 
-        const lat = Number(entry.lat);
-        const lng = Number(entry.lng);
+      processedButtonLogIds.current.add(logId);
 
-        push(ref(rtdb, `groups/${groupId}/alerts`), {
-          message: "Hardware Emergency Button Pressed!",
-          timestamp: entryTime || Date.now(),
-          pushNotified: false,
-          latitude: lat || null,
-          longitude: lng || null,
-          triggeredBy: null, // hardware-triggered — no app user to suppress the modal for
-        }).catch((e) => console.error("Failed to bridge button press to alerts:", e));
-      });
+      const lat = Number(entry.lat);
+      const lng = Number(entry.lng);
+
+      push(ref(rtdb, `groups/${groupId}/alerts`), {
+        reason: reason, // Includes "fall" or "button"
+        message:
+          reason === "fall"
+            ? "FALL DETECTED!"
+            : "Hardware Emergency Button Pressed!",
+        timestamp: entryTime || Date.now(),
+        pushNotified: false,
+        latitude: lat || null,
+        longitude: lng || null,
+        triggeredBy: null,
+      }).catch((e) =>
+        console.error("Failed to bridge hardware event to alerts:", e),
+      );
     });
-  }, [wearerId, groupId]);
+  });
+}, [wearerId, groupId]);
 
   // ─── JOB 4: Alerts Listener ───────────────────────────────────────────────────
   useEffect(() => {
@@ -940,7 +946,8 @@ export default function DashboardScreen() {
 
       <PrivacyConsentModal visible={showPrivacy} userId={user?.id ?? ""} onConsent={() => setShowPrivacy(false)} />
       <SOSModal
-        visible={!!currentModalAlert}
+        visible={!!currentModalAlert &&
+        currentModalAlert?.reason?.toLowerCase() !== "fall"}
         message={currentModalAlert?.message ?? ""}
         timestamp={currentModalAlert?.timestamp}
         location={
@@ -951,16 +958,23 @@ export default function DashboardScreen() {
         onDismiss={handleDismissSOS}
       />
       <FallSOSModal
-  visible={!!currentModalAlert && currentModalAlert?.reason === 'fall'}
-  message={currentModalAlert?.message ?? ''}
-  timestamp={currentModalAlert?.timestamp}
-  location={
-    currentModalAlert?.latitude && currentModalAlert?.longitude
-      ? { latitude: currentModalAlert.latitude, longitude: currentModalAlert.longitude }
-      : undefined
-  }
-  onDismiss={() => setCurrentModalAlert(null)}
-/>
+        visible={
+          !!currentModalAlert &&
+          currentModalAlert?.reason?.toLowerCase() === "fall"
+        }
+        message={currentModalAlert?.message ?? "Fall Detected!"}
+        timestamp={currentModalAlert?.timestamp}
+        location={
+          currentModalAlert?.latitude && currentModalAlert?.longitude
+            ? {
+                latitude: currentModalAlert.latitude,
+                longitude: currentModalAlert.longitude,
+              }
+            : undefined
+        }
+        onDismiss={handleDismissSOS}
+        />
+
     </View>
   );
 }
