@@ -947,6 +947,17 @@ export default function DashboardScreen() {
         }
         onDismiss={handleDismissSOS}
       />
+      <FallSOSModal
+  visible={!!currentModalAlert && currentModalAlert?.reason === 'fall'}
+  message={currentModalAlert?.message ?? ''}
+  timestamp={currentModalAlert?.timestamp}
+  location={
+    currentModalAlert?.latitude && currentModalAlert?.longitude
+      ? { latitude: currentModalAlert.latitude, longitude: currentModalAlert.longitude }
+      : undefined
+  }
+  onDismiss={() => setCurrentModalAlert(null)}
+/>
     </View>
   );
 }
