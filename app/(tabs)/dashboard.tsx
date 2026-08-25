@@ -21,6 +21,7 @@ import {
   View,
 } from "react-native";
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import FallSOSModal from "../../components/FallSOSModal";
 import PrivacyConsentModal from "../../components/PrivacyConsentModal";
 import QuickBar from "../../components/QuickBar";
 import SOSModal from "../../components/SOSModal";
@@ -37,6 +38,7 @@ type AlertLog = {
   pushNotified?: boolean;
   latitude?: number;
   longitude?: number;
+  reason?: string;
   // Guardian response fields — written by group.tsx handleStatusUpdate
   currentStatus?: "responded" | "on_the_way" | "arrived" | "aided";
   lastResponderName?: string;
@@ -569,6 +571,7 @@ export default function DashboardScreen() {
             const item = data[key];
             return {
               id: key,
+              reason: item.reason,
               message:
                 item.message ||
                 (item.reason === "button" ? "Hardware Emergency Button Pressed!" : item.reason) ||
