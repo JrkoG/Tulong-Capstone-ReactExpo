@@ -102,6 +102,11 @@ const STATUS_COLORS: Record<string, string> = {
   aided: "#4ade80",
 };
 
+// Matches the threshold used in tracker.tsx — a wearer location older than
+// this is shown with a staleness warning instead of silently displayed as
+// current.
+const WEARER_STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
 // ─── Haversine Distance Formula ───────────────────────────────────────────────
 function getDistanceKm(
   lat1: number,
@@ -275,6 +280,7 @@ export default function GroupScreen() {
   const [wearerLocation, setWearerLocation] = useState<{
     latitude: number;
     longitude: number;
+    lastUpdated: number;
   } | null>(null);
   const [myStatus, setMyStatus] = useState<"Available" | "Not Available">("Available");
   const [statusLoading, setStatusLoading] = useState(false);
@@ -375,27 +381,38 @@ export default function GroupScreen() {
   };
 
   // ─── Effect 2: IoT Wearer Location ─────────────────────────────────────────
+  // FIX: was querying `gpslogs/${group.id}` — group.id is the Firestore
+  // group document ID, which is NOT the same value as the hardware's
+  // DEVICE_ID (wearerId). Also fixed casing: the ESP32 writes to `gpsLogs`
+  // (capital L), not `gpslogs`. This listener never received real data
+  // before this fix. Now matches the path used in dashboard.tsx/tracker.tsx/
+  // track-wearer.tsx: gpsLogs/{wearerId}.
   useEffect(() => {
-    if (!group?.id) return;
+    if (!group?.wearerId) return;
     const latestLocationQuery = query(
-      ref(rtdb, `gpslogs/${group.id}`),
+      ref(rtdb, `gpsLogs/${group.wearerId}`),
       limitToLast(1),
     );
     return onValue(latestLocationQuery, (snapshot) => {
       if (snapshot.exists()) {
         snapshot.forEach((child) => {
           const data = child.val();
-          if (data?.latitude !== undefined && data?.longitude !== undefined) {
-            if (data.latitude === 0 && data.longitude === 0) return;
+          // Field names match what the ESP32 actually writes: lat/lng
+          // (which can arrive as empty strings "" before a GPS fix) and
+          // serverTime for the timestamp — not latitude/longitude/lastUpdated.
+          const lat = Number(data?.lat);
+          const lng = Number(data?.lng);
+          if (lat && lng) {
             setWearerLocation({
-              latitude: Number(data.latitude),
-              longitude: Number(data.longitude),
+              latitude: lat,
+              longitude: lng,
+              lastUpdated: data.serverTime ?? Date.now(),
             });
           }
         });
       }
     });
-  }, [group?.id]);
+  }, [group?.wearerId]);
 
   // ─── Effect 3: Active Alerts ────────────────────────────────────────────────
   useEffect(() => {
@@ -672,16 +689,38 @@ export default function GroupScreen() {
     }
   };
 
+  // Formats "time since" for staleness display — e.g. "3m ago", "1h ago"
+  const formatTimeSince = (timestamp: number): string => {
+    const diffMin = Math.round((Date.now() - timestamp) / 60000);
+    if (diffMin < 1) return "just now";
+    if (diffMin === 1) return "1m ago";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.round(diffMin / 60);
+    return `${diffHr}h ago`;
+  };
+
   const getDistanceText = (member: GroupMember): string => {
+    // State 1: wearer has never sent a single location — nothing to compare against.
     if (!wearerLocation) return "Waiting GPS...";
     if (!member.location) return "Locating...";
+
     const km = getDistanceKm(
       wearerLocation.latitude,
       wearerLocation.longitude,
       member.location.latitude,
       member.location.longitude,
     );
-    return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(2)}km`;
+    const distanceStr = km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(2)}km`;
+
+    // State 2: we have a wearer position, but it's old — show the distance
+    // with a warning instead of presenting it as if it were live.
+    const isStale = Date.now() - wearerLocation.lastUpdated > WEARER_STALE_THRESHOLD_MS;
+    if (isStale) {
+      return `⚠️ ${distanceStr} (${formatTimeSince(wearerLocation.lastUpdated)})`;
+    }
+
+    // State 3: fresh data — show plainly, as before.
+    return distanceStr;
   };
 
   // ─── Loading State ──────────────────────────────────────────────────────────
@@ -930,10 +969,17 @@ export default function GroupScreen() {
                   IoT Wearable Location
                 </Text>
                 {wearerLocation ? (
-                  <Text style={{ color: theme.success, paddingHorizontal: 16, paddingBottom: 16 }}>
-                    ● Signal Active ({wearerLocation.latitude.toFixed(4)},{" "}
-                    {wearerLocation.longitude.toFixed(4)})
-                  </Text>
+                  Date.now() - wearerLocation.lastUpdated > WEARER_STALE_THRESHOLD_MS ? (
+                    <Text style={{ color: "#f59e0b", paddingHorizontal: 16, paddingBottom: 16 }}>
+                      ⚠️ Last known {formatTimeSince(wearerLocation.lastUpdated)} ({wearerLocation.latitude.toFixed(4)},{" "}
+                      {wearerLocation.longitude.toFixed(4)})
+                    </Text>
+                  ) : (
+                    <Text style={{ color: theme.success, paddingHorizontal: 16, paddingBottom: 16 }}>
+                      ● Signal Active ({wearerLocation.latitude.toFixed(4)},{" "}
+                      {wearerLocation.longitude.toFixed(4)})
+                    </Text>
+                  )
                 ) : (
                   <Text style={{ color: theme.danger, paddingHorizontal: 16, paddingBottom: 16 }}>
                     Device not sending data yet
