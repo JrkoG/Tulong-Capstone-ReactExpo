@@ -18,7 +18,6 @@
     "@react-navigation/native": "^7.1.8",
     "ci": "^2.3.0",
     "expo": "~54.0.37",
-    "expo-audio": "~1.1.1",
     "expo-constants": "~18.0.14",
     "expo-dev-client": "~6.0.20",
     "expo-device": "~8.0.10",

@@ -1,4 +1,8 @@
-import { useAudioPlayer } from 'expo-audio';
+import {
+  AndroidNotificationPriority,
+  dismissAllNotificationsAsync,
+  scheduleNotificationAsync,
+} from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import {
@@ -21,19 +25,34 @@ type Props = {
   onDismiss: () => void;
 };
 
-const soundSource = require('../assets/sounds/care_alert_ringtone.wav');
-
 export default function FallSOSModal({ visible, message, location, timestamp, onDismiss }: Props) {
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
-  const player = useAudioPlayer(soundSource);
+
+  const triggerAlarmSound = async () => {
+    try {
+      await scheduleNotificationAsync({
+        content: {
+          title: '⚠️ FALL DETECTED',
+          body: message,
+          sound: 'care_alert_ringtone.wav',
+          ...(Platform.OS === 'android' && {
+            priority: AndroidNotificationPriority.MAX,
+          }),
+        },
+        trigger: null,
+        ...(Platform.OS === 'android' && { channelId: 'emergency_alerts' }),
+      });
+    } catch (e) {
+      console.log('Notification trigger error:', e);
+    }
+  };
 
   useEffect(() => {
     if (visible) {
       Vibration.vibrate([0, 400, 150, 400], true);
-      player.loop = true;
-      player.play();
+      triggerAlarmSound();
 
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -50,22 +69,20 @@ export default function FallSOSModal({ visible, message, location, timestamp, on
       ]).start();
     } else {
       Vibration.cancel();
-      player.pause();
-      player.seekTo(0);
+      dismissAllNotificationsAsync();
       fadeAnim.setValue(0);
       slideAnim.setValue(60);
     }
 
     return () => {
       Vibration.cancel();
-      player.pause();
+      dismissAllNotificationsAsync();
     };
   }, [visible]);
 
-  const handleOkayPress = () => {
-    player.pause();
-    player.seekTo(0);
+  const handleOkayPress = async () => {
     Vibration.cancel();
+    await dismissAllNotificationsAsync();
     onDismiss();
     router.push('/dashboard');
   };

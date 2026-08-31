@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications'; // Added expo-notifications
-import { Tabs, useRouter } from 'expo-router'; // Added useRouter
+import * as Notifications from 'expo-notifications';
+import { Tabs, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { limitToLast, onValue, query, ref } from 'firebase/database';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { Platform, useColorScheme } from 'react-native'; // Added Platform
+import { Platform, useColorScheme } from 'react-native';
 
 import GuardianResponseModal from '../../components/GuardianResponseModal';
 import { db, rtdb } from '../../config/firebase';
@@ -35,7 +35,7 @@ let _alertsListenerInitialized = false;
 export default function TabsLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const router = useRouter(); // Initialize router for notification tap handling
+  const router = useRouter();
 
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [latestResponse, setLatestResponse] = useState<any>(null);
@@ -48,12 +48,12 @@ export default function TabsLayout() {
   useEffect(() => {
     async function configurePushNotifications() {
       if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('sos-alerts', {
-          name: 'SOS & Fall Alerts',
+        await Notifications.setNotificationChannelAsync('emergency_alerts', {
+          name: 'Emergency Alerts',
           importance: Notifications.AndroidImportance.MAX, // Max priority for emergencies
           vibrationPattern: [0, 500, 200, 500], // Matches your modal vibration
           lightColor: '#f87171',
-          sound: 'CAREAlertRingtone', // MUST match the filename in assets and app.json exactly
+          sound: 'care_alert_ringtone.wav', // Matched exactly to the modal payloads
         });
       }
     }
