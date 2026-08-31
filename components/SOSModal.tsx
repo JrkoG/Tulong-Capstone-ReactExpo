@@ -1,10 +1,11 @@
+import { Audio } from 'expo-av';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react'; 
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
   Modal,
-  Platform, 
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -24,10 +25,32 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+
+  async function playAlarm() {
+    try {
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        require('../assets/sounds/care_alert_ringtone.wav'),
+        { shouldPlay: true, isLooping: true }
+      );
+      setSound(newSound);
+    } catch (error) {
+      console.log('Error playing sound:', error);
+    }
+  }
+
+  async function stopAlarm() {
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
+    }
+  }
 
   useEffect(() => {
     if (visible) {
       Vibration.vibrate([0, 500, 200, 500], true);
+      playAlarm();
 
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -44,16 +67,21 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
       ]).start();
     } else {
       Vibration.cancel();
+      stopAlarm();
       fadeAnim.setValue(0);
       slideAnim.setValue(60);
     }
 
     return () => {
       Vibration.cancel();
+      if (sound) {
+        sound.unloadAsync();
+      }
     };
   }, [visible]);
 
-  const handleOkayPress = () => {
+  const handleOkayPress = async () => {
+    await stopAlarm();
     Vibration.cancel(); 
     onDismiss(); 
     router.push('/dashboard'); 
@@ -86,7 +114,6 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
           <Text style={styles.title}>SOS ALERT</Text>
           <Text style={styles.message}>{message}</Text>
           
-          {/* 🌟 UPDATED: The block always shows, using fallbacks if IoT coordinates are missing */}
           <View style={styles.locationContainer}>
             <Text style={styles.locationTitle}>📍 Wearer's Location Coordinates:</Text>
             <Text style={styles.locationText}>

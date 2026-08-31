@@ -1,15 +1,16 @@
+import { Audio } from 'expo-av';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Easing,
-    Modal,
-    Platform,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    Vibration,
-    View,
+  Animated,
+  Easing,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from 'react-native';
 
 type Props = {
@@ -24,11 +25,33 @@ export default function FallSOSModal({ visible, message, location, timestamp, on
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+
+  async function playAlarm() {
+    try {
+      // Adjust the relative path based on where your modal file is located
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        require('../assets/sounds/care_alert_ringtone.wav'),
+        { shouldPlay: true, isLooping: true }
+      );
+      setSound(newSound);
+    } catch (error) {
+      console.log('Error playing sound:', error);
+    }
+  }
+
+  async function stopAlarm() {
+    if (sound) {
+      await sound.stopAsync();
+      await sound.unloadAsync();
+      setSound(null);
+    }
+  }
 
   useEffect(() => {
     if (visible) {
-      // Distinct double pulse vibration pattern for falls
       Vibration.vibrate([0, 400, 150, 400], true);
+      playAlarm();
 
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -45,16 +68,21 @@ export default function FallSOSModal({ visible, message, location, timestamp, on
       ]).start();
     } else {
       Vibration.cancel();
+      stopAlarm();
       fadeAnim.setValue(0);
       slideAnim.setValue(60);
     }
 
     return () => {
       Vibration.cancel();
+      if (sound) {
+        sound.unloadAsync();
+      }
     };
   }, [visible]);
 
-  const handleOkayPress = () => {
+  const handleOkayPress = async () => {
+    await stopAlarm();
     Vibration.cancel();
     onDismiss();
     router.push('/dashboard');
