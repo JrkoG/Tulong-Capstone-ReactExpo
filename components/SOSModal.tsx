@@ -1,6 +1,6 @@
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   Animated,
   Easing,
@@ -21,36 +21,19 @@ type Props = {
   onDismiss: () => void;
 };
 
+const soundSource = require('../assets/sounds/care_alert_ringtone.wav');
+
 export default function SOSModal({ visible, message, location, timestamp, onDismiss }: Props) {
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-
-  async function playAlarm() {
-    try {
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        require('../assets/sounds/care_alert_ringtone.wav'),
-        { shouldPlay: true, isLooping: true }
-      );
-      setSound(newSound);
-    } catch (error) {
-      console.log('Error playing sound:', error);
-    }
-  }
-
-  async function stopAlarm() {
-    if (sound) {
-      await sound.stopAsync();
-      await sound.unloadAsync();
-      setSound(null);
-    }
-  }
+  const player = useAudioPlayer(soundSource);
 
   useEffect(() => {
     if (visible) {
       Vibration.vibrate([0, 500, 200, 500], true);
-      playAlarm();
+      player.loop = true;
+      player.play();
 
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -67,21 +50,21 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
       ]).start();
     } else {
       Vibration.cancel();
-      stopAlarm();
+      player.pause();
+      player.seekTo(0);
       fadeAnim.setValue(0);
       slideAnim.setValue(60);
     }
 
     return () => {
       Vibration.cancel();
-      if (sound) {
-        sound.unloadAsync();
-      }
+      player.pause();
     };
   }, [visible]);
 
-  const handleOkayPress = async () => {
-    await stopAlarm();
+  const handleOkayPress = () => {
+    player.pause();
+    player.seekTo(0);
     Vibration.cancel(); 
     onDismiss(); 
     router.push('/dashboard'); 
@@ -91,7 +74,7 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
     if (!ts) return 'Just now';
     try {
       return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch (e) {
+    } catch {
       return 'Just now';
     }
   };
@@ -115,7 +98,7 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
           <Text style={styles.message}>{message}</Text>
           
           <View style={styles.locationContainer}>
-            <Text style={styles.locationTitle}>📍 Wearer's Location Coordinates:</Text>
+            <Text style={styles.locationTitle}>📍 {"Wearer's"} Location Coordinates:</Text>
             <Text style={styles.locationText}>
               Lat: {location?.latitude ? location.latitude.toFixed(6) : 'Unknown'}
             </Text>

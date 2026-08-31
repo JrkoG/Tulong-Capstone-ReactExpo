@@ -9,7 +9,6 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      
       "bundleIdentifier": "com.tulong.app",
       "supportsTablet": true,
       "config": {
@@ -17,7 +16,11 @@
         "googleServicesFile": "./GoogleService-Info.plist"
       },
       "infoPlist": {
-        "UIBackgroundModes": ["location", "fetch", "remote-notification"],
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ],
         "NSLocationAlwaysAndWhenInUseUsageDescription": "CARE-app needs your location to alert your contacts when you press the SOS button.",
         "NSLocationAlwaysUsageDescription": "CARE-app needs background location to track your position during emergencies.",
         "NSLocationWhenInUseUsageDescription": "CARE-app needs your location to send it to your emergency contacts."
@@ -74,7 +77,9 @@
         {
           "icon": "./assets/images/notification-icon.png",
           "color": "#f87171",
-          "sounds": ["./assets/sounds/care_alert_ringtone.wav"]
+          "sounds": [
+            "./assets/sounds/care_alert_ringtone.wav"
+          ]
         }
       ],
       [
@@ -87,7 +92,8 @@
           "isAndroidForegroundServiceEnabled": true
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
