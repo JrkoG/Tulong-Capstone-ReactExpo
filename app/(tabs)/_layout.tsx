@@ -1,13 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import * as Notifications from 'expo-notifications'; // Added expo-notifications
+import { Tabs, useRouter } from 'expo-router'; // Added useRouter
 import { getAuth } from 'firebase/auth';
 import { limitToLast, onValue, query, ref } from 'firebase/database';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
+import { Platform, useColorScheme } from 'react-native'; // Added Platform
 
 import GuardianResponseModal from '../../components/GuardianResponseModal';
 import { db, rtdb } from '../../config/firebase';
+
+// ─── STEP 3: Configure Foreground Notification Behavior ────────────────────────
+// This dictates how notifications act when the app is actively on screen.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 // Maps guardian status → human-readable message for the response modal
 const STATUS_MESSAGES: Record<string, string> = {
@@ -18,19 +29,13 @@ const STATUS_MESSAGES: Record<string, string> = {
 };
 
 // ─── Module-level session state ───────────────────────────────────────────────
-// Lives OUTSIDE the component so it survives remounts, tab switches, and Fast
-// Refresh. This is the ONLY guardian-response listener in the entire app —
-// it lives here because _layout.tsx wraps every tab, so the modal can pop up
-// no matter which screen the user is currently on. Do NOT duplicate this
-// logic in dashboard.tsx or any other screen — that caused two independent,
-// undeduped listeners to fire simultaneously, which is what caused stale
-// "9:01 AM" style responses to keep reappearing every time a tab was switched.
 let _seenGuardianStatusKey: string | null = null;
 let _alertsListenerInitialized = false;
 
 export default function TabsLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const router = useRouter(); // Initialize router for notification tap handling
 
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [latestResponse, setLatestResponse] = useState<any>(null);
@@ -38,6 +43,37 @@ export default function TabsLayout() {
   const [groupId, setGroupId] = useState<string | null>(null);
   const auth = getAuth();
   const userId = auth.currentUser?.uid;
+
+  // ─── STEP 3: Initialize Notification Channels & Listeners ────────────────────
+  useEffect(() => {
+    async function configurePushNotifications() {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('sos-alerts', {
+          name: 'SOS & Fall Alerts',
+          importance: Notifications.AndroidImportance.MAX, // Max priority for emergencies
+          vibrationPattern: [0, 500, 200, 500], // Matches your modal vibration
+          lightColor: '#f87171',
+          sound: 'CAREAlertRingtone', // MUST match the filename in assets and app.json exactly
+        });
+      }
+    }
+    
+    configurePushNotifications();
+
+    // Listen for users tapping the notification when the app is in the background or killed
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      console.log("User tapped notification, data:", data);
+      
+      // When tapped, immediately route the user to the dashboard. 
+      // Your existing components/Firebase listeners will handle displaying the FallSOSModal or SOSModal automatically.
+      router.push('/dashboard');
+    });
+
+    return () => {
+      responseListener.remove();
+    };
+  }, []);
 
   // ─── Fetch the user's group on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -69,7 +105,6 @@ export default function TabsLayout() {
       snapshot.forEach((childSnapshot) => {
         const data = childSnapshot.val();
 
-        // Skip resolved/aided alerts or entries with no guardian response yet
         if (
           data.status === 'resolved' ||
           data.status === 'aided' ||
@@ -81,17 +116,10 @@ export default function TabsLayout() {
         }
 
         const statusKey = `${data.lastResponderName}-${data.currentStatus}-${data.lastUpdateAt}`;
-
-        // Recency gate: only show if the status was updated within the last 90
-        // seconds. This is what stops old/stale Firebase data (like a response
-        // from hours ago) from ever triggering the modal again, regardless of
-        // how many times this listener re-subscribes.
         const updateTime = new Date(data.lastUpdateAt).getTime();
         const isRecent = Date.now() - updateTime < 90 * 1000;
 
         if (!_alertsListenerInitialized) {
-          // First fire on this listener (cold start, remount, or Fast Refresh)
-          // — seed the dedup key without showing the modal.
           _seenGuardianStatusKey = statusKey;
           return;
         }
@@ -99,10 +127,6 @@ export default function TabsLayout() {
         if (!isRecent || statusKey === _seenGuardianStatusKey) return;
         _seenGuardianStatusKey = statusKey;
 
-        // Don't show the modal to the guardian who triggered this status
-        // themselves — checked by UID, not displayName (displayName is never
-        // set on the Firebase Auth profile in this app, so it was always
-        // "A Guardian" and the old self-check never actually worked).
         if (data.lastResponderId === userId) return;
 
         setLatestResponse(data);
@@ -142,8 +166,6 @@ export default function TabsLayout() {
       </Tabs>
 
       {/* --- GLOBAL NOTIFICATION MODAL --- */}
-      {/* This is the ONLY GuardianResponseModal in the app. It lives here so it
-          can appear regardless of which tab the user is currently viewing. */}
       <GuardianResponseModal
         visible={showResponseModal}
         guardianName={latestResponse?.lastResponderName || 'A Guardian'}

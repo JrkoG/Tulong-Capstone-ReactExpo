@@ -2,10 +2,10 @@ import {
   AndroidNotificationPriority,
   scheduleNotificationAsync
 } from 'expo-notifications';
-import { limitToLast, onValue, query, ref, update } from 'firebase/database'; // Change to database
+import { limitToLast, onValue, query, ref } from 'firebase/database';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
-import { rtdb } from '../config/firebase'; // Import rtdb, NOT db
+import { rtdb } from '../config/firebase';
 
 type SOSAlert = {
   id: string;
@@ -15,62 +15,55 @@ type SOSAlert = {
   seen: boolean;
 };
 
-export function useAlertListener(userId: string | undefined) {
+export function useAlertListener(userId: string | undefined, groupId: string | null) {
   const [activeAlert, setActiveAlert] = useState<SOSAlert | null>(null);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !groupId) return;
 
-    // Use RTDB ref instead of Firestore query
-    const alertsRef = query(ref(rtdb, `users/${userId}/alerts`), limitToLast(1));
+    // Listen to the active group's alerts node
+    const alertsRef = query(ref(rtdb, `groups/${groupId}/alerts`), limitToLast(1));
 
     const unsub = onValue(alertsRef, async (snapshot) => {
-  if (!snapshot.exists()) return;
+      if (!snapshot.exists()) return;
 
-  const dataMap = snapshot.val();
-  // Get the IDs and pick the very last one (the most recent)
-  const alertIds = Object.keys(dataMap);
-  const alertId = alertIds[alertIds.length - 1]; 
-  const data = dataMap[alertId];
+      const dataMap = snapshot.val();
+      const alertIds = Object.keys(dataMap);
+      const alertId = alertIds[alertIds.length - 1]; 
+      const data = dataMap[alertId];
 
-  if (data && data.seen === false) {
+      // Ignore if triggered by the current user or already resolved
+      if (data && data.triggeredBy !== userId && data.status !== "resolved" && data.status !== "aided") {
         const alert: SOSAlert = {
           id: alertId,
-          message: data.message || 'SOS! The wearer needs help!',
-          location: data.location,
-          timestamp: data.timestamp,
+          message: data.message || 'SOS! Emergency alert triggered!',
+          location: data.latitude && data.longitude ? { latitude: data.latitude, longitude: data.longitude } : undefined,
+          timestamp: data.timestamp || Date.now(),
           seen: false,
         };
 
         setActiveAlert(alert);
 
+        // Fire local push notification to device tray
         await scheduleNotificationAsync({
           content: {
-            title: '🚨 SOS Alert!',
+            title: '🚨 EMERGENCY ALERT DETECTED',
             body: alert.message,
-            sound: true,
+            sound: 'care_alert_ringtone.wav', // Required with extension for iOS/fallback
             ...(Platform.OS === 'android' && {
               priority: AndroidNotificationPriority.MAX,
             }),
           },
           trigger: null,
+          ...(Platform.OS === 'android' && { channelId: 'emergency_alerts' }),
         });
       }
     });
 
     return () => unsub();
-  }, [userId]);
+  }, [userId, groupId]);
 
-  const dismissAlert = async () => {
-    if (!activeAlert || !userId) return;
-    try {
-      // Update RTDB path
-      await update(ref(rtdb, `users/${userId}/alerts/${activeAlert.id}`), {
-        seen: true,
-      });
-    } catch (e) {
-      console.error('Failed to dismiss alert:', e);
-    }
+  const dismissAlert = () => {
     setActiveAlert(null);
   };
 

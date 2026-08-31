@@ -166,9 +166,10 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
 // ─── Notifications ────────────────────────────────────────────────────────────
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -248,7 +249,6 @@ const markerStyles = StyleSheet.create({
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const { logout, user } = useAuth();
-  const { activeAlert, dismissAlert } = useAlertListener(user?.id);
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -275,6 +275,7 @@ export default function DashboardScreen() {
   // not just one test group.
   const [groupId, setGroupId] = useState<string | null>(null);
   const [wearerId, setWearerId] = useState<string | null>(null);
+  const { activeAlert, dismissAlert } = useAlertListener(user?.id, groupId);
 
   // Tracks button-press log IDs already turned into an alert, so the same
   // hardware press never creates a duplicate SOS entry if this listener
@@ -431,7 +432,7 @@ export default function DashboardScreen() {
             notificationBody: "Live tracking is protecting your family circle.",
             notificationColor: "#D0A97E",
           },
-          pausesLocationUpdatesAutomatically: false, // Prevents OS suspension
+          pausesUpdatesAutomatically: false, // Prevents OS suspension
         });
       }
     };
@@ -706,7 +707,20 @@ export default function DashboardScreen() {
       ],
     );
   };
-
+  useEffect(() => {
+  async function setupChannel() {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('emergency_alerts', {
+        name: 'Emergency Alerts',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: 'care_alert_ringtone', // Do NOT include .wav extension here
+        vibrationPattern: [0, 500, 250, 500],
+        lightColor: '#FF0000',
+        });
+      }
+    }
+    setupChannel();
+  }, []);
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
