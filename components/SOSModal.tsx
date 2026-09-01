@@ -30,26 +30,26 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
 
-  const triggerAlarmSound = async () => {
-    try {
-      await scheduleNotificationAsync({
-        content: {
-          title: '🚨 EMERGENCY SOS ALERT',
-          body: message,
-          sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.wav',
-          ...(Platform.OS === 'android' && {
-            priority: AndroidNotificationPriority.MAX,
-          }),
-        },
-        trigger: null,
-        ...(Platform.OS === 'android' && { channelId: 'emergency_alerts' }),
-      });
-    } catch (e) {
-      console.log('Notification trigger error:', e);
-    }
-  };
-
   useEffect(() => {
+    const triggerAlarmSound = async () => {
+      try {
+        await scheduleNotificationAsync({
+          content: {
+            title: '🚨 EMERGENCY SOS ALERT',
+            body: message,
+            sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.wav',
+            ...(Platform.OS === 'android' && {
+              priority: AndroidNotificationPriority.MAX,
+              channelId: 'emergency_alerts',
+            }),
+          },
+          trigger: null,
+        });
+      } catch (e) {
+        console.log('Notification trigger error:', e);
+      }
+    };
+
     if (visible) {
       Vibration.vibrate([0, 500, 200, 500], true);
       triggerAlarmSound();
@@ -78,7 +78,7 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
       Vibration.cancel();
       dismissAllNotificationsAsync();
     };
-  }, [visible]);
+  }, [visible, fadeAnim, slideAnim, message]);
 
   const handleOkayPress = async () => {
     Vibration.cancel();
