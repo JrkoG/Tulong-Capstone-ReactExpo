@@ -36,7 +36,7 @@ export default function FallSOSModal({ visible, message, location, timestamp, on
         content: {
           title: '⚠️ FALL DETECTED',
           body: message,
-          sound: 'care_alert_ringtone.wav',
+          sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.wav',
           ...(Platform.OS === 'android' && {
             priority: AndroidNotificationPriority.MAX,
           }),

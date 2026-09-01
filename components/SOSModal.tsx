@@ -36,7 +36,7 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
         content: {
           title: '🚨 EMERGENCY SOS ALERT',
           body: message,
-          sound: 'care_alert_ringtone.wav',
+          sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.wav',
           ...(Platform.OS === 'android' && {
             priority: AndroidNotificationPriority.MAX,
           }),
@@ -81,10 +81,10 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
   }, [visible]);
 
   const handleOkayPress = async () => {
-    Vibration.cancel(); 
+    Vibration.cancel();
     await dismissAllNotificationsAsync();
-    onDismiss(); 
-    router.push('/dashboard'); 
+    onDismiss();
+    router.push('/dashboard');
   };
 
   const formatTime = (ts: any) => {
@@ -101,7 +101,7 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
   return (
     <Modal visible={visible} transparent animationType="none">
       <View style={styles.overlay}>
-        <Animated.View 
+        <Animated.View
           style={[
             styles.modalCard,
             { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
@@ -110,10 +110,10 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
           <View style={styles.iconWrap}>
             <Text style={styles.icon}>🚨</Text>
           </View>
-          
+
           <Text style={styles.title}>SOS ALERT</Text>
           <Text style={styles.message}>{message}</Text>
-          
+
           <View style={styles.locationContainer}>
             <Text style={styles.locationTitle}>📍 {"Wearer's"} Location Coordinates:</Text>
             <Text style={styles.locationText}>
@@ -123,7 +123,7 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
               Lng: {location?.longitude ? location.longitude.toFixed(6) : 'Unknown'}
             </Text>
           </View>
-          
+
           <Text style={styles.timestampText}>Time: {formatTime(timestamp)}</Text>
 
           <View style={styles.divider} />

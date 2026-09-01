@@ -10,17 +10,15 @@ import { Platform, useColorScheme } from 'react-native';
 import GuardianResponseModal from '../../components/GuardianResponseModal';
 import { db, rtdb } from '../../config/firebase';
 
-// ─── STEP 3: Configure Foreground Notification Behavior ────────────────────────
-// This dictates how notifications act when the app is actively on screen.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowList: true,
   }),
 });
 
-// Maps guardian status → human-readable message for the response modal
 const STATUS_MESSAGES: Record<string, string> = {
   responded: 'has responded to the alert',
   on_the_way: 'is on the way to the wearer',
@@ -28,13 +26,11 @@ const STATUS_MESSAGES: Record<string, string> = {
   aided: 'has aided the wearer — situation under control',
 };
 
-// ─── Module-level session state ───────────────────────────────────────────────
 let _seenGuardianStatusKey: string | null = null;
 let _alertsListenerInitialized = false;
 
 export default function TabsLayout() {
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
   const router = useRouter();
 
   const [showResponseModal, setShowResponseModal] = useState(false);
@@ -44,38 +40,44 @@ export default function TabsLayout() {
   const auth = getAuth();
   const userId = auth.currentUser?.uid;
 
-  // ─── STEP 3: Initialize Notification Channels & Listeners ────────────────────
   useEffect(() => {
     async function configurePushNotifications() {
+      // 1. Prompt for runtime notification permissions
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Notification permissions not granted!');
+        return;
+      }
+
       if (Platform.OS === 'android') {
+        // 2. Clear old channel settings cache
+        await Notifications.deleteNotificationChannelAsync('emergency_alerts');
+
+        // 3. Register high-priority channel (raw sound name omitted extension)
         await Notifications.setNotificationChannelAsync('emergency_alerts', {
           name: 'Emergency Alerts',
-          importance: Notifications.AndroidImportance.MAX, // Max priority for emergencies
-          vibrationPattern: [0, 500, 200, 500], // Matches your modal vibration
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 500, 200, 500],
           lightColor: '#f87171',
-          sound: 'care_alert_ringtone.wav', // Matched exactly to the modal payloads
-        });
+          sound: 'care_alert_ringtone',
+        }
+        );
       }
     }
     
     configurePushNotifications();
 
-    // Listen for users tapping the notification when the app is in the background or killed
     const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       console.log("User tapped notification, data:", data);
-      
-      // When tapped, immediately route the user to the dashboard. 
-      // Your existing components/Firebase listeners will handle displaying the FallSOSModal or SOSModal automatically.
       router.push('/dashboard');
     });
 
     return () => {
       responseListener.remove();
     };
-  }, []);
+  }, [router]);
 
-  // ─── Fetch the user's group on mount ─────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
 
@@ -93,7 +95,6 @@ export default function TabsLayout() {
     fetchUserGroup();
   }, [userId]);
 
-  // ─── GLOBAL Guardian Response Listener ───────────────────────────────────────
   useEffect(() => {
     if (!groupId) return;
 
@@ -141,7 +142,6 @@ export default function TabsLayout() {
 
   return (
     <>
-      {/* --- TABS --- */}
       <Tabs screenOptions={{ tabBarStyle: { display: 'none' } }}>
         <Tabs.Screen name="index" options={{ href: null }} />
         <Tabs.Screen
@@ -165,7 +165,6 @@ export default function TabsLayout() {
         <Tabs.Screen name="tracker" options={{ title: 'Tracker' }} />
       </Tabs>
 
-      {/* --- GLOBAL NOTIFICATION MODAL --- */}
       <GuardianResponseModal
         visible={showResponseModal}
         guardianName={latestResponse?.lastResponderName || 'A Guardian'}
