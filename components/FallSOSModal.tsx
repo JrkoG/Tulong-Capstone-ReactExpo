@@ -31,54 +31,43 @@ export default function FallSOSModal({ visible, message, location, timestamp, on
   const slideAnim = useRef(new Animated.Value(60)).current;
 
   useEffect(() => {
-    const triggerAlarmSound = async () => {
-      try {
-        await scheduleNotificationAsync({
-          content: {
-            title: '⚠️ FALL DETECTED',
-            body: message,
-            sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.wav',
-            ...(Platform.OS === 'android' && {
-              priority: AndroidNotificationPriority.MAX,
-              channelId: 'emergency_alerts',
-            }),
-          },
-          trigger: null,
-        });
-      } catch (e) {
-        console.log('Notification trigger error:', e);
-      }
-    };
-
-    if (visible) {
-      Vibration.vibrate([0, 400, 150, 400], true);
-      triggerAlarmSound();
-
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 400,
-          easing: Easing.out(Easing.back(1)),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Vibration.cancel();
-      dismissAllNotificationsAsync();
-      fadeAnim.setValue(0);
-      slideAnim.setValue(60);
+  const triggerAlarmSound = async () => {
+    try {
+      await scheduleNotificationAsync({
+        content: {
+          title: '⚠️ FALL DETECTED',
+          body: message, //[cite: 2, 3]
+          sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.wav', //[cite: 2, 3]
+          priority: AndroidNotificationPriority.MAX, //[cite: 2, 3]
+          channelId: 'emergency_alerts_v2', // Nested inside content[cite: 2, 3]
+        } as any,
+        trigger: null, //[cite: 2, 3]
+      });
+    } catch (e) {
+      console.log('Notification trigger error:', e); //[cite: 2, 3]
     }
+  };
 
-    return () => {
-      Vibration.cancel();
-      dismissAllNotificationsAsync();
-    };
-  }, [visible, fadeAnim, slideAnim, message]);
+  if (visible) {
+    Vibration.vibrate([0, 500, 200, 500], true); // Continuous pattern[cite: 2, 3]
+    triggerAlarmSound(); //[cite: 2, 3]
+
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }), //[cite: 2, 3]
+      Animated.timing(slideAnim, { toValue: 0, duration: 400, easing: Easing.out(Easing.back(1)), useNativeDriver: true }), //[cite: 2, 3]
+    ]).start();
+  } else {
+    Vibration.cancel(); //[cite: 2, 3]
+    dismissAllNotificationsAsync(); //[cite: 2, 3]
+    fadeAnim.setValue(0); //[cite: 2, 3]
+    slideAnim.setValue(60); //[cite: 2, 3]
+  }
+
+  return () => {
+    Vibration.cancel(); //[cite: 2, 3]
+    dismissAllNotificationsAsync(); //[cite: 2, 3]
+  };
+}, [visible]); // STRICTLY depend ONLY on visible
 
   const handleOkayPress = async () => {
     Vibration.cancel();

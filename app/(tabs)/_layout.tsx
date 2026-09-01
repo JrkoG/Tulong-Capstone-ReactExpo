@@ -41,42 +41,27 @@ export default function TabsLayout() {
   const userId = auth.currentUser?.uid;
 
   useEffect(() => {
-    async function configurePushNotifications() {
-      // 1. Prompt for runtime notification permissions
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.warn('Notification permissions not granted!');
-        return;
-      }
+  async function configurePushNotifications() {
+    const { status } = await Notifications.requestPermissionsAsync(); //[cite: 4]
+    if (status !== 'granted') return;
 
-      if (Platform.OS === 'android') {
-        // 2. Clear old channel settings cache
-        await Notifications.deleteNotificationChannelAsync('emergency_alerts');
+    if (Platform.OS === 'android') {
+      // Force delete old cached channel[cite: 4]
+      await Notifications.deleteNotificationChannelAsync('emergency_alerts'); //[cite: 4]
 
-        // 3. Register high-priority channel (raw sound name omitted extension)
-        await Notifications.setNotificationChannelAsync('emergency_alerts', {
-          name: 'Emergency Alerts',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 500, 200, 500],
-          lightColor: '#f87171',
-          sound: 'care_alert_ringtone',
-        }
-        );
-      }
+      // Register new channel with clean sound name (no extension)[cite: 4]
+      await Notifications.setNotificationChannelAsync('emergency_alerts_v2', {
+        name: 'Emergency Alerts V2',
+        importance: Notifications.AndroidImportance.MAX, //[cite: 4]
+        vibrationPattern: [0, 500, 200, 500], //[cite: 4]
+        lightColor: '#f87171', //[cite: 4]
+        sound: 'care_alert_ringtone', //[cite: 4]
+      });
     }
-    
-    configurePushNotifications();
-
-    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      const data = response.notification.request.content.data;
-      console.log("User tapped notification, data:", data);
-      router.push('/dashboard');
-    });
-
-    return () => {
-      responseListener.remove();
-    };
-  }, [router]);
+  }
+  
+  configurePushNotifications();
+}, []);
 
   useEffect(() => {
     if (!userId) return;
