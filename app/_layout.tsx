@@ -7,12 +7,11 @@ import { AuthProvider, useAuth } from '../context/authContext';
 // ─── Global Notification Handler (Allows sound & alert in Foreground) ─────────
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
-    shouldList: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
-  } as any),
+  })as any,
 });
 
 // ─── Inner component (needs access to useAuth) ────────────────────────────────
@@ -38,9 +37,9 @@ function RouteGuard() {
       }
 
       if (Platform.OS === 'android') {
-        await Notifications.deleteNotificationChannelAsync('emergency_alerts');
-        await Notifications.setNotificationChannelAsync('emergency_alerts_v2', {
-          name: 'Emergency Alerts V2',
+        await Notifications.deleteNotificationChannelAsync('emergency_alerts_v2');
+        await Notifications.setNotificationChannelAsync('emergency_alerts_v3', {
+          name: 'Emergency Alerts V3',
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 500, 200, 500],
           lightColor: '#f87171',

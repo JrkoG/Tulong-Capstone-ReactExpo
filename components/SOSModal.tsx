@@ -37,9 +37,9 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
         content: {
           title: '🚨 EMERGENCY SOS ALERT',
           body: message, //[cite: 2, 3]
-          sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.wav', //[cite: 2, 3]
+          sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.mp3', //[cite: 2, 3]
           priority: AndroidNotificationPriority.MAX, //[cite: 2, 3]
-          channelId: 'emergency_alerts_v2', // Nested inside content[cite: 2, 3]
+          channelId: 'emergency_alerts_v3', // Nested inside content[cite: 2, 3]
         } as any,
         trigger: null, //[cite: 2, 3]
       });

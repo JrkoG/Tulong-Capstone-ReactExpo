@@ -78,7 +78,7 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#f87171",
           "sounds": [
-            "./assets/sounds/care_alert_ringtone.wav"
+            "./assets/sounds/care_alert_ringtone.mp3"
           ]
         }
       ],
