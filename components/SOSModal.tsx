@@ -16,6 +16,7 @@ import {
   Vibration,
   View,
 } from 'react-native';
+import SoundPlayer from 'react-native-sound-player';
 
 type Props = {
   visible: boolean;
@@ -31,43 +32,53 @@ export default function SOSModal({ visible, message, location, timestamp, onDism
   const slideAnim = useRef(new Animated.Value(60)).current;
 
   useEffect(() => {
-  const triggerAlarmSound = async () => {
+  const triggerAlarmNotification = async () => {
     try {
       await scheduleNotificationAsync({
         content: {
           title: '🚨 EMERGENCY SOS ALERT',
-          body: message, //[cite: 2, 3]
-          sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.mp3', //[cite: 2, 3]
-          priority: AndroidNotificationPriority.MAX, //[cite: 2, 3]
-          channelId: 'emergency_alerts_v3', // Nested inside content[cite: 2, 3]
+          body: message,
+          sound: Platform.OS === 'android' ? 'care_alert_ringtone' : 'care_alert_ringtone.mp3',
+          priority: AndroidNotificationPriority.MAX,
+          channelId: 'emergency_alerts_v3',
         } as any,
-        trigger: null, //[cite: 2, 3]
+        trigger: null,
       });
     } catch (e) {
-      console.log('Notification trigger error:', e); //[cite: 2, 3]
+      console.log('Notification trigger error:', e);
     }
   };
 
   if (visible) {
-    Vibration.vibrate([0, 500, 200, 500], true); // Continuous pattern[cite: 2, 3]
-    triggerAlarmSound(); //[cite: 2, 3]
+    // Start vibration and visual notification
+    Vibration.vibrate([0, 500, 200, 500], true);
+    triggerAlarmNotification();
+    
+    // 2. Play the sound directly via native media player
+    try {
+      SoundPlayer.playSoundFile('care_alert_ringtone', 'mp3');
+    } catch (e) {
+      console.log('Cannot play the sound file', e);
+    }
 
     Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }), //[cite: 2, 3]
-      Animated.timing(slideAnim, { toValue: 0, duration: 400, easing: Easing.out(Easing.back(1)), useNativeDriver: true }), //[cite: 2, 3]
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 400, easing: Easing.out(Easing.back(1)), useNativeDriver: true }),
     ]).start();
   } else {
-    Vibration.cancel(); //[cite: 2, 3]
-    dismissAllNotificationsAsync(); //[cite: 2, 3]
-    fadeAnim.setValue(0); //[cite: 2, 3]
-    slideAnim.setValue(60); //[cite: 2, 3]
+    Vibration.cancel();
+    dismissAllNotificationsAsync();
+    SoundPlayer.stop(); // 3. Stop sound when closed
+    fadeAnim.setValue(0);
+    slideAnim.setValue(60);
   }
 
   return () => {
-    Vibration.cancel(); //[cite: 2, 3]
-    dismissAllNotificationsAsync(); //[cite: 2, 3]
+    Vibration.cancel();
+    dismissAllNotificationsAsync();
+    SoundPlayer.stop(); // 4. Stop sound on unmount
   };
-}, [visible]); // STRICTLY depend ONLY on visible
+}, [visible]);
 
   const handleOkayPress = async () => {
     Vibration.cancel();
